@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static picker preview (Android 12–14; 15+ uses generated Glance previews). Demo values only. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/wshape_card"
+    android:backgroundTint="@color/w_surface"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:drawableStart="@drawable/wdot_great"
+        android:drawablePadding="7dp"
+        android:gravity="center_vertical"
+        android:text="Signals normal"
+        android:textColor="@color/w_on_surface"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <LinearLayout style="@style/WidgetPreviewSignalRow">
+        <TextView style="@style/WidgetPreviewSignalLabel" android:drawableStart="@drawable/wdot_great" android:text="HRV" />
+        <TextView style="@style/WidgetPreviewSignalValue" android:text="48" />
+    </LinearLayout>
+    <LinearLayout style="@style/WidgetPreviewSignalRow" android:layout_marginTop="6dp">
+        <TextView style="@style/WidgetPreviewSignalLabel" android:drawableStart="@drawable/wdot_great" android:text="RHR" />
+        <TextView style="@style/WidgetPreviewSignalValue" android:text="56" />
+    </LinearLayout>
+    <LinearLayout style="@style/WidgetPreviewSignalRow" android:layout_marginTop="6dp">
+        <TextView style="@style/WidgetPreviewSignalLabel" android:drawableStart="@drawable/wdot_great" android:text="Breath" />
+        <TextView style="@style/WidgetPreviewSignalValue" android:text="14.2" />
+    </LinearLayout>
+</LinearLayout>

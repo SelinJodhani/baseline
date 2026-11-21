@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget palette: Material 3 tonal roles. Android 12+: dynamic system palettes, dark. -->
+<resources>
+    <!-- Card surface -->
+    <color name="w_surface">@android:color/system_neutral1_900</color>
+    <!-- Primary text on surfaces -->
+    <color name="w_on_surface">@android:color/system_neutral1_100</color>
+    <!-- Secondary text on surfaces -->
+    <color name="w_on_surface_var">@android:color/system_neutral2_200</color>
+    <!-- Progress track on surfaces -->
+    <color name="w_track">@android:color/system_neutral2_700</color>
+    <!-- Chip fill on surfaces -->
+    <color name="w_chip">@android:color/system_accent2_700</color>
+    <!-- Text on chips -->
+    <color name="w_on_chip">@android:color/system_accent2_100</color>
+    <!-- Primary accent: rings, indicators -->
+    <color name="w_a1">@android:color/system_accent1_200</color>
+    <!-- Primary container (Readiness circle, verb chip) -->
+    <color name="w_a1_container">@android:color/system_accent1_700</color>
+    <!-- Text on primary container -->
+    <color name="w_on_a1_container">@android:color/system_accent1_100</color>
+    <!-- Muted text on primary container -->
+    <color name="w_on_a1_container_var">@android:color/system_accent1_200</color>
+    <!-- Track on primary container -->
+    <color name="w_a1_track">@android:color/system_accent1_600</color>
+    <!-- Secondary container (Move) -->
+    <color name="w_a2_container">@android:color/system_accent2_700</color>
+    <!-- Text on secondary container -->
+    <color name="w_on_a2_container">@android:color/system_accent2_100</color>
+    <!-- Muted text on secondary container -->
+    <color name="w_on_a2_container_var">@android:color/system_accent2_200</color>
+    <!-- Track on secondary container -->
+    <color name="w_a2_track">@android:color/system_accent2_600</color>
+    <!-- Tertiary accent: sleep, active minutes -->
+    <color name="w_a3">@android:color/system_accent3_200</color>
+    <!-- Tertiary, softer (earlier nights) -->
+    <color name="w_a3_mid">@android:color/system_accent3_500</color>
+    <!-- Tertiary container (Sleep) -->
+    <color name="w_a3_container">@android:color/system_accent3_700</color>
+    <!-- Text on tertiary container -->
+    <color name="w_on_a3_container">@android:color/system_accent3_100</color>
+    <!-- Muted text on tertiary container -->
+    <color name="w_on_a3_container_var">@android:color/system_accent3_200</color>
+    <!-- Track on tertiary container -->
+    <color name="w_a3_track">@android:color/system_accent3_600</color>
+    <!-- Deep sleep -->
+    <color name="w_stage_deep">@android:color/system_accent3_100</color>
+    <!-- REM sleep -->
+    <color name="w_stage_rem">@android:color/system_accent1_200</color>
+    <!-- Light sleep -->
+    <color name="w_stage_light">@android:color/system_accent3_400</color>
+    <!-- Awake -->
+    <color name="w_stage_awake">@android:color/system_accent3_600</color>
+</resources>

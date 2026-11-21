@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static readiness ring (78%) for the widget picker's previewLayout (Android 12–14). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="100dp"
+    android:height="100dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <path
+        android:pathData="M14.22,32.12 A40,40 0 0,1 39.14,11.5"
+        android:strokeWidth="8"
+        android:strokeLineCap="round"
+        android:strokeColor="@color/w_a1_track" />
+    <path
+        android:pathData="M53.99,10.2 A40,40 0 1,1 10.16,46.46"
+        android:strokeWidth="8"
+        android:strokeLineCap="round"
+        android:strokeColor="@color/w_a1" />
+</vector>

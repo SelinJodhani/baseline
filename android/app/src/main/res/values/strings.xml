@@ -1,11 +1,15 @@
 <resources>
     <string name="app_name">Baseline</string>
     <string name="widget_today">Today</string>
-    <string name="widget_today_description">Readiness, today\'s focus, and sleep, steps and HRV at a glance</string>
+    <string name="widget_today_description">Your day on one card: readiness, today\'s focus, last night\'s sleep, steps and body signals</string>
+    <string name="widget_today_pill">Today strip</string>
+    <string name="widget_today_pill_description">One line: how ready you are, today\'s focus, sleep and steps</string>
     <string name="widget_readiness">Readiness</string>
-    <string name="widget_readiness_description">How recovered you are today, against your own normal</string>
+    <string name="widget_readiness_description">A circle with today\'s readiness against your own normal</string>
     <string name="widget_sleep">Sleep</string>
-    <string name="widget_sleep_description">Last night against your sleep need, stages, and tonight\'s bedtime</string>
+    <string name="widget_sleep_description">Last night against your need, stages, the past 7 nights and tonight\'s bedtime</string>
     <string name="widget_move">Move</string>
-    <string name="widget_move_description">Steps against your goal and this week\'s active minutes</string>
+    <string name="widget_move_description">Steps today and active minutes this week, as two rings</string>
+    <string name="widget_signals">Body signals</string>
+    <string name="widget_signals_description">HRV, resting heart rate and breathing against your normal range</string>
 </resources>
