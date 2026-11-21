@@ -56,47 +56,51 @@ class SignalsWidget : BaselineWidget(setOf(DpSize(150.dp, 150.dp), DpSize(300.dp
         val levels = listOf(i.hrv.level, i.rhr.level, i.resp.level)
         val off = WidgetWords.signalsOff(i.illnessFlag, levels)
         val wide = w >= 220.dp
-        val sparkRoom = w >= 150.dp
+        val sparkRoom = w >= 120.dp
         Column(GlanceModifier.fillMaxSize()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Dot(if (off) Level.Low else if (levels.all { it == Level.Unknown }) Level.Unknown else Level.Great, 8.dp)
                 HSpace(7.dp)
                 T(WidgetWords.signalsHeadline(i.illnessFlag, levels), if (wide) 16.sp else 14.sp, WC.onSurface, FontWeight.Bold)
             }
-            if (wide && h >= 112.dp) {
+            val tall = h >= 150.dp
+            if ((wide && h >= 112.dp) || tall) {
                 VSpace(1.dp)
                 T(
                     if (state.staleHours != null) "Updated ${state.staleHours} h ago" else WidgetWords.signalsDetail(i.illnessFlag, i.hrv.level, i.rhr.level, i.resp.level),
                     12.sp, WC.onSurfaceVar, modifier = GlanceModifier.padding(start = 15.dp),
                 )
             }
+            // Spread the three rows over the free height so tall cells don't leave a hole in the middle.
+            val rowH = if (tall) 30.dp else 22.dp
             Spacer(GlanceModifier.defaultWeight())
-            val gap = if (h >= 112.dp) 6.dp else 3.dp
-            SignalRow(context, SignalKind.Hrv, i.hrv, look, w, wide, sparkRoom)
-            VSpace(gap)
-            SignalRow(context, SignalKind.Rhr, i.rhr, look, w, wide, sparkRoom)
-            VSpace(gap)
-            SignalRow(context, SignalKind.Breathing, i.resp, look, w, wide, sparkRoom)
+            SignalRow(context, SignalKind.Hrv, i.hrv, look, w, wide, sparkRoom, rowH)
+            Spacer(GlanceModifier.defaultWeight())
+            SignalRow(context, SignalKind.Rhr, i.rhr, look, w, wide, sparkRoom, rowH)
+            Spacer(GlanceModifier.defaultWeight())
+            SignalRow(context, SignalKind.Breathing, i.resp, look, w, wide, sparkRoom, rowH)
+            if (tall) Spacer(GlanceModifier.defaultWeight())
         }
     }
 
     @Composable
-    private fun SignalRow(context: Context, kind: SignalKind, s: Signal, look: Look, w: Dp, wide: Boolean, sparkRoom: Boolean) {
+    private fun SignalRow(context: Context, kind: SignalKind, s: Signal, look: Look, w: Dp, wide: Boolean, sparkRoom: Boolean, rowH: Dp = 22.dp) {
+        val big = rowH > 22.dp
         val labelW = if (wide) 78.dp else 46.dp
         val valueW = if (look.numbers) (if (wide) 66.dp else 40.dp) else (if (wide) 72.dp else 58.dp)
         val sparkW = w - 6.dp - 8.dp - labelW - 8.dp - valueW
-        Row(GlanceModifier.fillMaxWidth().height(22.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(GlanceModifier.fillMaxWidth().height(rowH), verticalAlignment = Alignment.CenterVertically) {
             Dot(s.level, 6.dp)
             HSpace(8.dp)
             T(if (wide) kind.label else kind.short, 12.sp, WC.onSurfaceVar, FontWeight.Medium, modifier = GlanceModifier.width(labelW))
             if (sparkRoom && sparkW >= 28.dp) {
-                Spark(context, s, sparkW, 18.dp)
+                Spark(context, s, sparkW, if (big) 24.dp else 18.dp)
                 HSpace(8.dp)
             } else Spacer(GlanceModifier.defaultWeight())
             Box(GlanceModifier.width(valueW), contentAlignment = Alignment.CenterEnd) {
                 if (look.numbers) {
                     Row(verticalAlignment = Alignment.Bottom) {
-                        T(WidgetWords.signalValue(kind, s.today), 14.sp, WC.onSurface, FontWeight.Bold)
+                        T(WidgetWords.signalValue(kind, s.today), if (big) 18.sp else 14.sp, WC.onSurface, FontWeight.Bold)
                         if (wide && s.today != null) {
                             HSpace(3.dp)
                             T(kind.unit, 10.sp, WC.onSurfaceVar, modifier = GlanceModifier.padding(bottom = 2.dp))
