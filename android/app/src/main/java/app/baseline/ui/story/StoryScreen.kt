@@ -75,6 +75,7 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit, onOpenSettings: ()
     var rangeIdx by rememberSaveable(metric) { mutableIntStateOf(1) }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+      Box(Modifier.fillMaxSize()) { // Surface would stretch the status-bar scrim over the whole page
         LazyColumn(
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top + 4.dp, bottom = bottom + 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -173,6 +174,7 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit, onOpenSettings: ()
             }
         }
         Box(Modifier.fillMaxWidth().height(top).background(MaterialTheme.colorScheme.surface.copy(alpha = .9f)))
+      }
     }
 }
 

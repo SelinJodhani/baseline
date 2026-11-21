@@ -440,7 +440,11 @@ class InsightEngine(
             (diff > 0) == higherIsBetter -> "better than usual"
             else -> if (higherIsBetter) "below your normal" else "above your normal"
         }
-        val delta = if (unit == "ms") "%+.0f%%".format(pct) else "%+.0f".format(diff)
+        val delta = when {
+            unit == "ms" -> if (abs(pct) < 0.5) "±0%" else "%+.0f%%".format(pct)
+            abs(diff) < 0.5 -> "±0"
+            else -> "%+.0f".format(diff)
+        }
         return "${t.roundToInt()} $unit ($delta) · $word"
     }
 
