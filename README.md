@@ -6,6 +6,8 @@
 
 # Baseline
 
+<p align="center"><a href="https://github.com/SelinJodhani/baseline/releases/latest"><b>⬇ Download the latest APK</b></a> · Android 10+</p>
+
 **A calm, minimal Android dashboard for your Amazfit / Zepp data.** One verdict a day, three numbers that matter, and a plain-language story behind every metric. Everything runs on your own server.
 
 The Zepp app shows you everything and tells you nothing. Baseline does the opposite. It compares you with **your own 60-day normal** and answers three questions:
