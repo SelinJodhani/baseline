@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
@@ -31,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -45,11 +47,31 @@ fun RefreshablePage(refreshing: Boolean, onRefresh: () -> Unit, content: LazyLis
             modifier = Modifier.fillMaxSize(),
             content = content,
         )
-        // Keep scrolled content from colliding with the status bar icons.
-        Box(
-            Modifier.fillMaxWidth().height(top).background(MaterialTheme.colorScheme.surface.copy(alpha = .94f)),
-        )
+        StatusBarScrim()
     }
+}
+
+/**
+ * Keeps scrolled content from colliding with the status bar icons.
+ *
+ * wrapContentHeight matters: parents such as Material's Surface pass their full-screen minimum size down
+ * to children, and a plain `height(top)` is then stretched over the whole page — a 90% veil that left
+ * every screen looking almost black (v0.2.0).
+ */
+@Composable
+fun StatusBarScrim(
+    alpha: Float = .94f,
+    top: Dp = WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .wrapContentHeight(Alignment.Top, unbounded = false)
+            .then(modifier)
+            .height(top)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = alpha)),
+    )
 }
 
 @Composable

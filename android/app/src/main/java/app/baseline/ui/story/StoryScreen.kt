@@ -58,6 +58,7 @@ import app.baseline.ui.charts.TrendChart
 import app.baseline.ui.common.Fmt
 import app.baseline.ui.common.LevelPill
 import app.baseline.ui.common.SectionCard
+import app.baseline.ui.common.StatusBarScrim
 import app.baseline.ui.theme.Numeric
 import app.baseline.ui.theme.Brand
 
@@ -96,8 +97,13 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit) {
             }
             item {
                 val days = ranges[rangeIdx].first
-                val vals = remember(m, metric, days) { values(m, metric, days) }
-                val dates = m.engine.dates(days)
+                // Start the chart at the first reading (keeping at least a week) so a short history
+                // isn't squeezed against the right edge of a mostly empty month or year.
+                val raw = remember(m, metric, days) { values(m, metric, days) }
+                val from = remember(raw) { raw.indexOfFirst { it != null }.let { if (it < 0) 0 else minOf(it, maxOf(0, raw.size - 7)) } }
+                val vals = remember(raw, from) { raw.drop(from) }
+                val dates = remember(m, days, from) { m.engine.dates(days).drop(from) }
+                val trimmed = from > 0
                 val avg = remember(vals) {
                     when {
                         metric == Metric.Weight -> Stats.ewma(vals, 0.1)
@@ -124,14 +130,15 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             sel?.let { i -> "${Fmt.weekdayShort(dates[i])} ${Fmt.dayMonth(dates[i])}  ·  ${vals.getOrNull(i)?.let(sp.format) ?: "no data"} ${sp.unit}" }
-                                ?: "Last ${ranges[rangeIdx].second.lowercase().let { if (it == "1y") "year" else if (it == "3m") "3 months" else if (it == "1m") "month" else "2 weeks" }}",
+                                ?: if (trimmed) "Since ${Fmt.dayMonth(dates.first())}  ·  all your data so far"
+                                else "Last ${ranges[rangeIdx].second.lowercase().let { if (it == "1y") "year" else if (it == "3m") "3 months" else if (it == "1m") "month" else "2 weeks" }}",
                             style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     Spacer(Modifier.height(8.dp))
                     TrendChart(
                         values = vals, color = sp.color,
-                        labels = ChartLabels(dates.map { if (days <= 14) Fmt.weekdayShort(it) else Fmt.dayMonth(it) }, sp.format),
+                        labels = ChartLabels(dates.map { if (dates.size <= 14) Fmt.weekdayShort(it) else Fmt.dayMonth(it) }, sp.format),
                         average = avg, band = band, goal = goal, bars = sp.bars, onSelect = { sel = it },
                     )
                     Spacer(Modifier.height(12.dp))
@@ -170,7 +177,7 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit) {
                 }
             }
         }
-        Box(Modifier.fillMaxWidth().height(top).background(MaterialTheme.colorScheme.surface.copy(alpha = .9f)))
+        StatusBarScrim()
     }
 }
 
