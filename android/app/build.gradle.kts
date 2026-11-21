@@ -14,27 +14,27 @@ val keystoreProps = Properties().apply {
 fun signingValue(key: String, env: String): String? = System.getenv(env) ?: keystoreProps.getProperty(key)
 
 android {
-    namespace = "app.ojas"
+    namespace = "app.baseline"
     compileSdk {
         version = release(37) { minorApiLevel = 2 }
     }
 
     defaultConfig {
-        applicationId = "app.ojas"
+        applicationId = "app.baseline"
         minSdk = 29
         targetSdk = 36
-        versionCode = (System.getenv("OJAS_VERSION_CODE") ?: "1").toInt()
-        versionName = System.getenv("OJAS_VERSION_NAME") ?: "0.1.0-dev"
+        versionCode = (System.getenv("BASELINE_VERSION_CODE") ?: "1").toInt()
+        versionName = System.getenv("BASELINE_VERSION_NAME") ?: "0.1.0-dev"
     }
 
     signingConfigs {
         create("release") {
-            val path = signingValue("storeFile", "OJAS_KEYSTORE_PATH")
+            val path = signingValue("storeFile", "BASELINE_KEYSTORE_PATH")
             if (path != null) {
                 storeFile = file(path)
-                storePassword = signingValue("storePassword", "OJAS_KEYSTORE_PASSWORD")
-                keyAlias = signingValue("keyAlias", "OJAS_KEY_ALIAS")
-                keyPassword = signingValue("keyPassword", "OJAS_KEY_PASSWORD")
+                storePassword = signingValue("storePassword", "BASELINE_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "BASELINE_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "BASELINE_KEY_PASSWORD")
             }
         }
     }

@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "Ojas"
+rootProject.name = "Baseline"
 include(":app")

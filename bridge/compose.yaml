@@ -1,14 +1,14 @@
 # Example: run next to ZeppBridge on the same host.
-# 1. echo "OJAS_TOKEN=$(openssl rand -base64 32)" > .env && chmod 600 .env
+# 1. echo "BASELINE_TOKEN=$(openssl rand -base64 32)" > .env && chmod 600 .env
 # 2. docker compose up -d --build
 services:
-  ojas-bridge:
+  baseline-bridge:
     build:
       context: .
       args:
         ZEPPBRIDGE_IMAGE: zeppbridge:local   # the image you sync with
-    image: ojas-bridge:local
-    container_name: ojas-bridge
+    image: baseline-bridge:local
+    container_name: baseline-bridge
     restart: unless-stopped
     user: "${ZEPPBRIDGE_UID:-1000}:${ZEPPBRIDGE_GID:-1000}"
     env_file: .env

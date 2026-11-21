@@ -19,3 +19,4 @@ __pycache__/
 bridge/.env
 bridge/data/
 *.export.json
+.claude/

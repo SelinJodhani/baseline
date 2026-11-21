@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Ojas</string>
+    <string name="app_name">Baseline</string>
     <string name="widget_today">Today</string>
     <string name="widget_today_description">Readiness, today\'s focus, and sleep, steps and HRV at a glance</string>
     <string name="widget_readiness">Readiness</string>

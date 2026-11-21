@@ -1,0 +1,413 @@
+#!/usr/bin/env python3
+"""Baseline Bridge — a tiny, read-only HTTP API over a ZeppBridge library.
+
+It shells out to `zeppbridge-cli export --format json` (the stable, documented
+`zeppbridge.ai.v2` contract) and reshapes the result into one compact JSON
+document the Baseline Android app understands (`baseline.v1`). It never writes to the
+ZeppBridge database, never talks to the Zepp cloud, and has no dependencies
+beyond the Python standard library.
+
+Environment:
+  BASELINE_TOKEN          required. Bearer token the app must send (>= 24 chars).
+  BASELINE_PORT           default 8787
+  BASELINE_BIND           default 0.0.0.0
+  BASELINE_MAX_DAYS       default 730 (hard cap for ?days=)
+  ZEPPBRIDGE_CLI      default zeppbridge-cli
+  ZEPPBRIDGE_DATA_DIR default /data
+  TZ                  set it! ZeppBridge files readings under local days.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import gzip
+import hashlib
+import hmac
+import json
+import logging
+import os
+import subprocess
+import sys
+import threading
+import time
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any, Callable
+from urllib.parse import parse_qs, urlparse
+
+VERSION = "0.1.0"
+SCHEMA = "baseline.v1"
+
+LONG_TYPES = "daily_activity,recovery,pai,sleep,workouts,vo2max,weight,training_load"
+SHORT_TYPES = "heart_rate,stress,spo2"
+INTRADAY_DAYS = 8
+SLEEP_STAGE_NIGHTS = 45
+
+# ZeppBridge daily metric name -> Baseline day field.
+DAILY_FIELDS = {
+    "steps": "steps",
+    "step_goal": "stepGoal",
+    "distance": "distanceM",
+    "calories": "calories",
+    "active_calories": "activeCalories",
+    "calorie_goal": "calorieGoal",
+    "active_minutes": "activeMinutes",
+    "active_minutes_goal": "activeMinutesGoal",
+    "resting_hr": "restingHr",
+    "device_resting_hr": "deviceRestingHr",
+    "device_max_hr": "maxHr",
+    "sleep_hrv": "sleepHrv",
+    "sleep_rhr": "sleepRhr",
+    "respiratory_rate": "respRate",
+    "spo2_night_score": "spo2NightScore",
+    "spo2_odi": "spo2Odi",
+    "spo2_measured_minutes": "spo2Minutes",
+    "stress": "stress",
+    "stress_min": "stressMin",
+    "stress_max": "stressMax",
+    "stress_relaxed_pct": "stressRelaxedPct",
+    "stress_normal_pct": "stressNormalPct",
+    "stress_medium_pct": "stressMediumPct",
+    "stress_high_pct": "stressHighPct",
+    "pai_daily": "pai",
+    "pai_total": "paiWeek",
+    "pai_low_zone_minutes": "lowZoneMin",
+    "pai_medium_zone_minutes": "moderateZoneMin",
+    "pai_high_zone_minutes": "vigorousZoneMin",
+    "readiness": "zeppReadiness",
+    "hrv_readiness": "zeppHrvScore",
+    "rhr_readiness": "zeppRhrScore",
+    "skin_temp_readiness": "zeppSkinTempScore",
+    "physical_charge": "physicalCharge",
+    "mental_charge": "mentalCharge",
+    "hybrid_charge": "charge",
+    "training_load": "trainingLoad",
+    "vo2max": "vo2max",
+}
+# Activity totals: the cloud's cross-device fusion is the better number.
+PREFER_FUSED = {"steps", "distance", "calories", "active_calories", "active_minutes"}
+SCOPE_RANK = {"device": 0, "user_fused": 1, "unknown": 2}
+
+log = logging.getLogger("baseline-bridge")
+
+
+# --------------------------------------------------------------------- export
+
+Exporter = Callable[[str, str, str], dict]
+
+
+def cli_exporter(start: str, end: str, types: str) -> dict:
+    """Run zeppbridge-cli export and return the parsed JSON document."""
+    cmd = [
+        os.environ.get("ZEPPBRIDGE_CLI", "zeppbridge-cli"),
+        "export", "--format", "json", "--detail", "summary",
+        "--from", start, "--to", end, "--types", types,
+    ]
+    proc = subprocess.run(cmd, capture_output=True, timeout=120, check=False)
+    if proc.returncode != 0:
+        msg = proc.stderr.decode("utf-8", "replace").strip()[-400:]
+        raise RuntimeError(f"zeppbridge-cli export exited {proc.returncode}: {msg}")
+    return json.loads(proc.stdout)
+
+
+# ------------------------------------------------------------------ transform
+
+def _round(v: Any, nd: int = 1) -> Any:
+    if isinstance(v, float):
+        r = round(v, nd)
+        return int(r) if nd == 0 or r.is_integer() else r
+    return v
+
+
+def _local_tz() -> dt.tzinfo:
+    return dt.datetime.now().astimezone().tzinfo or dt.timezone.utc
+
+
+def _parse_ts(s: str | None) -> dt.datetime | None:
+    if not s:
+        return None
+    try:
+        return dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _epoch(s: str | None) -> int | None:
+    t = _parse_ts(s)
+    return int(t.timestamp()) if t else None
+
+
+def build_days(daily_metrics: list[dict]) -> list[dict]:
+    chosen: dict[tuple[str, str], tuple[int, Any]] = {}
+    for r in daily_metrics:
+        name, date, value = r.get("metric"), r.get("date"), r.get("value")
+        if name not in DAILY_FIELDS or date is None or value is None:
+            continue
+        rank = SCOPE_RANK.get(r.get("source_scope") or "unknown", 2)
+        if name in PREFER_FUSED and r.get("source_scope") == "user_fused":
+            rank = -1
+        key = (date, name)
+        if key not in chosen or rank < chosen[key][0]:
+            chosen[key] = (rank, value)
+    days: dict[str, dict] = {}
+    for (date, name), (_, value) in chosen.items():
+        nd = 0 if name in {"steps", "distance", "calories", "active_calories", "step_goal"} else 1
+        days.setdefault(date, {"date": date})[DAILY_FIELDS[name]] = _round(float(value), nd)
+    return [days[d] for d in sorted(days)]
+
+
+def build_weights(samples: list[dict]) -> list[dict]:
+    out = []
+    for r in samples:
+        if r.get("metric") == "weight" and r.get("value") is not None:
+            t = r.get("timestamp") or r.get("hour")
+            out.append({"t": _epoch(t), "kg": _round(float(r["value"]), 2)})
+    return sorted((w for w in out if w["t"]), key=lambda w: w["t"])
+
+
+def build_sleeps(sessions: list[dict]) -> list[dict]:
+    out = []
+    ordered = sorted(sessions, key=lambda s: s.get("start_time") or "")
+    stage_cutoff = len(ordered) - SLEEP_STAGE_NIGHTS
+    for i, s in enumerate(ordered):
+        start, end = _epoch(s.get("start_time")), _epoch(s.get("end_time"))
+        if start is None or end is None or end <= start:
+            continue
+        item = {
+            "start": start,
+            "end": end,
+            "durationMin": s.get("duration_minutes"),
+            "deepMin": s.get("deep_minutes"),
+            "lightMin": s.get("light_minutes"),
+            "remMin": s.get("rem_minutes"),
+            "awakeMin": s.get("awake_minutes"),
+            "wakeCount": s.get("wake_count"),
+            "score": s.get("score"),
+        }
+        if i >= stage_cutoff:
+            stages = []
+            for st in s.get("stages") or []:
+                a, b = _epoch(st.get("start_time")), _epoch(st.get("end_time"))
+                if a is not None and b is not None and b > a and st.get("stage"):
+                    stages.append([a, b, st["stage"]])
+            item["stages"] = stages
+        out.append({k: v for k, v in item.items() if v is not None})
+    return out
+
+
+def build_hourly(samples: list[dict]) -> dict:
+    series: dict[str, list] = {"heartRate": [], "stress": [], "spo2": []}
+    key = {"heart_rate": "heartRate", "stress": "stress", "spo2": "spo2"}
+    best: dict[tuple[str, int], tuple[int, list]] = {}
+    for r in samples:
+        k = key.get(r.get("metric"))
+        t = _epoch(r.get("hour"))
+        if not k or t is None or r.get("avg") is None:
+            continue
+        rank = SCOPE_RANK.get(r.get("source_scope") or "unknown", 2)
+        row = [t, _round(r.get("min")), _round(r.get("avg")), _round(r.get("max"))]
+        if (k, t) not in best or rank < best[(k, t)][0]:
+            best[(k, t)] = (rank, row)
+    for (k, _), (_, row) in sorted(best.items(), key=lambda kv: kv[0][1]):
+        series[k].append(row)
+    return series
+
+
+def build_workouts(workouts: list[dict]) -> list[dict]:
+    out = []
+    for w in workouts:
+        start, end = _epoch(w.get("start_time")), _epoch(w.get("end_time"))
+        if start is None:
+            continue
+        zones = None
+        hz = w.get("hr_zones")
+        if isinstance(hz, dict) and isinstance(hz.get("zones"), list):
+            zones = [int(z.get("seconds") or 0) for z in hz["zones"]]
+        elif isinstance(hz, list):
+            zones = [int((z or {}).get("seconds") or 0) for z in hz if isinstance(z, dict)]
+        item = {
+            "id": str(w.get("workout_id")),
+            "type": w.get("effective_type") or w.get("workout_type") or "workout",
+            "start": start,
+            "end": end,
+            "distanceM": _round(w.get("distance_meters"), 0),
+            "calories": _round(w.get("calories"), 0),
+            "avgHr": _round(w.get("avg_hr"), 0),
+            "maxHr": _round(w.get("max_hr"), 0),
+            "trainingLoad": _round(w.get("training_load")),
+            "aerobicTe": _round(w.get("training_effect")),
+            "anaerobicTe": _round(w.get("anaerobic_training_effect")),
+            "vo2max": _round(w.get("vo2max")),
+            "steps": w.get("total_steps"),
+            "elevationGainM": _round(w.get("elevation_gain_m"), 0),
+            "zoneSeconds": zones,
+        }
+        out.append({k: v for k, v in item.items() if v is not None})
+    return sorted(out, key=lambda w: w["start"])
+
+
+def build_summary(long_doc: dict, short_doc: dict, *, start: str, end: str,
+                  data_modified: float | None) -> dict:
+    ld, sd = long_doc.get("data", {}), short_doc.get("data", {})
+    days = build_days(ld.get("daily_metrics", []))
+    hourly = build_hourly(sd.get("metric_samples", []))
+    sleeps = build_sleeps(ld.get("sleep_sessions", []))
+    last_points = [r[0] for s in hourly.values() for r in s]
+    last_points += [s["end"] for s in sleeps]
+    max_hr = next((d["maxHr"] for d in reversed(days) if "maxHr" in d), None)
+    tz = _local_tz()
+    return {
+        "schema": SCHEMA,
+        "bridgeVersion": VERSION,
+        "generatedAt": int(time.time()),
+        "timezone": os.environ.get("TZ") or str(tz),
+        "utcOffsetMinutes": int((dt.datetime.now(tz).utcoffset() or dt.timedelta()).total_seconds() // 60),
+        "range": {"from": start, "to": end},
+        "freshness": {
+            "lastReadingAt": max(last_points) if last_points else None,
+            "libraryModifiedAt": int(data_modified) if data_modified else None,
+        },
+        "profile": {"maxHr": max_hr},
+        "days": days,
+        "sleeps": sleeps,
+        "hourly": hourly,
+        "workouts": build_workouts(ld.get("workouts", [])),
+        "weights": build_weights(ld.get("metric_samples", [])),
+    }
+
+
+# ---------------------------------------------------------------------- cache
+
+class SummaryCache:
+    """Re-exports only when the ZeppBridge library changed on disk."""
+
+    def __init__(self, exporter: Exporter, data_dir: str):
+        self.exporter, self.data_dir = exporter, data_dir
+        self.lock = threading.Lock()
+        self.entries: dict[int, tuple[str, bytes, bytes]] = {}
+
+    def library_mtime(self) -> float | None:
+        times = []
+        for name in ("zepp.db", "zepp.db-wal"):
+            try:
+                times.append(os.stat(os.path.join(self.data_dir, name)).st_mtime)
+            except OSError:
+                pass
+        return max(times) if times else None
+
+    def get(self, days: int) -> tuple[str, bytes, bytes]:
+        mtime = self.library_mtime()
+        today = dt.date.today()
+        version = f"{mtime}:{today}:{days}:{VERSION}"
+        etag = '"' + hashlib.sha256(version.encode()).hexdigest()[:20] + '"'
+        with self.lock:
+            hit = self.entries.get(days)
+            if hit and hit[0] == etag:
+                return hit
+            start = (today - dt.timedelta(days=days - 1)).isoformat()
+            short_start = (today - dt.timedelta(days=INTRADAY_DAYS - 1)).isoformat()
+            end = today.isoformat()
+            t0 = time.monotonic()
+            long_doc = self.exporter(start, end, LONG_TYPES)
+            short_doc = self.exporter(short_start, end, SHORT_TYPES)
+            summary = build_summary(long_doc, short_doc, start=start, end=end, data_modified=mtime)
+            body = json.dumps(summary, separators=(",", ":"), ensure_ascii=False).encode()
+            entry = (etag, body, gzip.compress(body, 6))
+            self.entries[days] = entry
+            log.info("built summary days=%d bytes=%d gz=%d in %.0fms",
+                     days, len(body), len(entry[2]), (time.monotonic() - t0) * 1000)
+            return entry
+
+
+# ----------------------------------------------------------------------- http
+
+def make_handler(cache: SummaryCache, token: str, max_days: int):
+    token_b = token.encode()
+
+    class Handler(BaseHTTPRequestHandler):
+        server_version = f"BaselineBridge/{VERSION}"
+        sys_version = ""
+
+        def log_message(self, fmt: str, *args: Any) -> None:  # no query strings, no tokens
+            log.info("%s %s %s", self.address_string(), self.command, fmt % args)
+
+        def _send(self, status: int, body: bytes = b"", ctype: str = "application/json",
+                  headers: dict | None = None) -> None:
+            self.send_response(status)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            for k, v in (headers or {}).items():
+                self.send_header(k, v)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
+
+        def _error(self, status: int, message: str) -> None:
+            self._send(status, json.dumps({"error": message}).encode())
+
+        def _authorized(self) -> bool:
+            header = self.headers.get("Authorization", "")
+            if not header.startswith("Bearer "):
+                return False
+            return hmac.compare_digest(header[7:].strip().encode(), token_b)
+
+        def do_GET(self) -> None:  # noqa: N802
+            url = urlparse(self.path)
+            if url.path == "/healthz":
+                return self._send(200, json.dumps({"ok": True, "version": VERSION}).encode())
+            if not url.path.startswith("/api/"):
+                return self._error(404, "not found")
+            if not self._authorized():
+                return self._send(401, b'{"error":"unauthorized"}',
+                                  headers={"WWW-Authenticate": 'Bearer realm="baseline"'})
+            if url.path == "/api/v1/ping":
+                return self._send(200, json.dumps({"ok": True, "version": VERSION, "schema": SCHEMA}).encode())
+            if url.path != "/api/v1/summary":
+                return self._error(404, "not found")
+            try:
+                days = int(parse_qs(url.query).get("days", ["400"])[0])
+            except ValueError:
+                return self._error(400, "days must be an integer")
+            days = max(14, min(days, max_days))
+            try:
+                etag, body, gz = cache.get(days)
+            except Exception as exc:  # export failed: tell the app, keep running
+                log.error("summary failed: %s", exc)
+                return self._error(503, "ZeppBridge export failed — check the bridge logs")
+            if self.headers.get("If-None-Match") == etag:
+                return self._send(304, headers={"ETag": etag})
+            headers = {"ETag": etag, "Vary": "Accept-Encoding"}
+            if "gzip" in (self.headers.get("Accept-Encoding") or ""):
+                headers["Content-Encoding"] = "gzip"
+                return self._send(200, gz, headers=headers)
+            return self._send(200, body, headers=headers)
+
+        do_HEAD = do_GET
+
+    return Handler
+
+
+def main() -> int:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stdout)
+    token = os.environ.get("BASELINE_TOKEN", "")
+    if len(token) < 24:
+        log.error("BASELINE_TOKEN must be set to a random string of at least 24 characters "
+                  "(e.g. `openssl rand -base64 32`).")
+        return 2
+    port = int(os.environ.get("BASELINE_PORT", "8787"))
+    bind = os.environ.get("BASELINE_BIND", "0.0.0.0")
+    max_days = int(os.environ.get("BASELINE_MAX_DAYS", "730"))
+    cache = SummaryCache(cli_exporter, os.environ.get("ZEPPBRIDGE_DATA_DIR", "/data"))
+    server = ThreadingHTTPServer((bind, port), make_handler(cache, token, max_days))
+    log.info("Baseline Bridge %s listening on %s:%d (TZ=%s)", VERSION, bind, port, os.environ.get("TZ", "unset"))
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
