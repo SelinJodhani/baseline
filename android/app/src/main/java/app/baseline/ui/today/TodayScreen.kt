@@ -57,10 +57,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.viewmodel.compose.viewModel
+import app.baseline.AppViewModel
 import app.baseline.Model
 import app.baseline.ai.Brief
 import app.baseline.ai.BriefService
+import app.baseline.data.Feel
 import app.baseline.data.Source
+import app.baseline.data.holdSleepDetail
+import app.baseline.data.showNumbers
 import app.baseline.insight.Focus
 import app.baseline.insight.InsightEngine
 import app.baseline.insight.Level
@@ -83,11 +89,17 @@ fun TodayScreen(
     onSync: () -> Unit = {}, onOpenZepp: () -> Unit = {},
 ) {
     val fresh = freshnessOf(m)
+    // The activity-scoped view model (same instance AppRoot uses) for check-ins and modes.
+    val vm: AppViewModel = viewModel()
+    var showWhy by rememberSaveable { mutableStateOf(false) }
+    var showModes by rememberSaveable { mutableStateOf(false) }
+    val mode = m.insights.mode
     RefreshablePage(m.data.refreshing || m.data.syncing, onRefresh) {
-        item { Header(m, onSettings) }
+        item { Header(m, onSettings, onTakeItEasy = { showModes = true }) }
         if (fresh.showCard) item { FreshnessCard(m, fresh, onSync, onOpenZepp) }
         item { app.baseline.update.UpdateBanner() }
-        item { Hero(m, onMetric) }
+        if (mode != null) item { ModeBanner(mode, m, onOff = { vm.setMode(null) }) }
+        item { Hero(m, onWhy = { showWhy = true }, onFeel = { vm.setFeel(it) }, onTakeItEasy = { showModes = true }) }
         if (m.settings.aiEnabled && m.settings.geminiKey.isNotBlank()) item { BriefCard(m) }
         item {
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -98,16 +110,24 @@ fun TodayScreen(
         item { Signals(m, onMetric) }
         item { Freshness(m) }
     }
+    if (showWhy) WhySheet(m, onHistory = { showWhy = false; onMetric(Metric.Readiness) }, onDismiss = { showWhy = false })
+    if (showModes) ModeSheet(mode, onPick = { vm.setMode(it); showModes = false }, onDismiss = { showModes = false })
 }
 
+/** Local hour in the data's timezone, for the "hold sleep until noon" option. */
+private fun localHour(m: Model) = ZonedDateTime.now(m.insights.zone).hour
+
 @Composable
-private fun Header(m: Model, onSettings: () -> Unit) {
+private fun Header(m: Model, onSettings: () -> Unit, onTakeItEasy: () -> Unit) {
     val hour = ZonedDateTime.now(m.insights.zone).hour
     val greeting = when (hour) { in 5..11 -> "Good morning"; in 12..16 -> "Good afternoon"; in 17..21 -> "Good evening"; else -> "Rest well" }
     Row(Modifier.fillMaxWidth().padding(top = 4.dp, start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(Fmt.fullDate(m.insights.today).uppercase(), style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.2.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(greeting, style = MaterialTheme.typography.headlineLarge)
+        }
+        IconButton(onClick = onTakeItEasy) {
+            Icon(m.insights.mode?.let { modeIcon(it.mode) } ?: Icons.Rounded.Spa, "Taking it easy?", tint = if (m.insights.mode != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
         }
         IconButton(onClick = onSettings) { Icon(Icons.Rounded.Settings, "Settings", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
@@ -124,41 +144,61 @@ private fun focusIcon(k: Focus.Kind) = when (k) {
 }
 
 @Composable
-private fun Hero(m: Model, onMetric: (Metric) -> Unit) {
+private fun Hero(m: Model, onWhy: () -> Unit, onFeel: (Feel?) -> Unit, onTakeItEasy: () -> Unit) {
     val r = m.insights.readiness
     val f = m.insights.focus
     val h = Brand.health
+    val numbers = m.settings.showNumbers()
+    val holdSleep = m.settings.holdSleepDetail(localHour(m))
     val tint = if (r.level == Level.Unknown) MaterialTheme.colorScheme.primary else h.of(r.level)
     val shown = r.score ?: r.zeppScore
     val counted by animateIntAsState(shown ?: 0, tween(1100), label = "score")
+    val chip = readinessChip(m)
     Surface(shape = RoundedCornerShape(32.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Box(Modifier.background(tint.copy(alpha = .10f))) {
             Column(Modifier.padding(24.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onMetric(Metric.Readiness) }) {
-                    Gauge(shown?.let { it / 100f }, listOf(tint), Modifier.size(132.dp), stroke = 12.dp) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(if (shown == null) "—" else "$counted", style = MaterialTheme.typography.displayMedium.merge(Numeric), fontWeight = FontWeight.Bold)
-                            Text(if (r.score == null && r.zeppScore != null) "ZEPP" else "READY", style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable(onClick = onWhy)) {
+                    if (numbers) {
+                        Gauge(shown?.let { it / 100f }, listOf(tint), Modifier.size(132.dp), stroke = 12.dp) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(if (shown == null) "—" else "$counted", style = MaterialTheme.typography.displayMedium.merge(Numeric), fontWeight = FontWeight.Bold)
+                                Text(if (r.score == null && r.zeppScore != null) "ZEPP" else "READINESS", style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    } else {
+                        // Calm mode: the verb only, the arc a coarse picture of it.
+                        Gauge(verbFraction(r.verb), listOf(tint), Modifier.size(132.dp), stroke = 12.dp) {
+                            Text(
+                                r.verb?.label ?: "Learning", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold,
+                                color = if (r.verb == null) MaterialTheme.colorScheme.onSurface else tint, maxLines = 1,
+                            )
                         }
                     }
                     Spacer(Modifier.width(20.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(r.headline, style = MaterialTheme.typography.headlineMedium, color = if (r.level == Level.Unknown) MaterialTheme.colorScheme.onSurface else tint)
+                        if (numbers) {
+                            Text(r.headline, style = MaterialTheme.typography.headlineMedium, color = if (r.level == Level.Unknown) MaterialTheme.colorScheme.onSurface else tint)
+                        }
+                        chip?.let { QuietChip(it, Modifier.padding(top = 4.dp)) }
+                        FeelAgreement(m)
                         Spacer(Modifier.height(10.dp))
                         r.contributors.forEach { c ->
+                            val held = holdSleep && c.name == "Sleep"
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
-                                Box(Modifier.size(8.dp).clip(CircleShape).background(h.of(c.level)))
+                                Box(Modifier.size(8.dp).clip(CircleShape).background(if (held) MaterialTheme.colorScheme.outlineVariant else h.of(c.level)))
                                 Spacer(Modifier.width(8.dp))
                                 Text(c.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
                 }
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(18.dp))
+                CheckIn(m, onFeel, onTakeItEasy)
+                Spacer(Modifier.height(18.dp))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
                 Spacer(Modifier.height(18.dp))
                 Row(verticalAlignment = Alignment.Top) {
-                    Icon(focusIcon(f.kind), null, tint = tint, modifier = Modifier.size(24.dp))
+                    Icon(m.insights.mode?.let { modeIcon(it.mode) } ?: focusIcon(f.kind), null, tint = tint, modifier = Modifier.size(24.dp))
                     Spacer(Modifier.width(14.dp))
                     Column {
                         Text(f.title, style = MaterialTheme.typography.titleLarge)
@@ -230,13 +270,26 @@ private fun TileLabel(text: String, color: Color) {
 private fun SleepTile(m: Model, modifier: Modifier, onClick: () -> Unit) {
     val s = m.insights.sleep
     val h = Brand.health
+    val hold = m.settings.holdSleepDetail(localHour(m))
     Tile(modifier, onClick) {
         TileLabel("Sleep", h.sleep)
         Spacer(Modifier.height(10.dp))
-        Text(Fmt.duration(s.asleepMin), style = MaterialTheme.typography.headlineMedium.merge(Numeric), fontWeight = FontWeight.Bold)
-        Text("of ${Fmt.duration(s.needMin)} need", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        when {
+            hold -> {
+                Text("After noon", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text("Last night's details wait until the afternoon", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            !m.settings.showNumbers() -> {
+                Text(sleepWord(s.level), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text(if (s.level == Level.Unknown) "Nothing recorded yet" else "last night", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            else -> {
+                Text(Fmt.duration(s.asleepMin), style = MaterialTheme.typography.headlineMedium.merge(Numeric), fontWeight = FontWeight.Bold)
+                Text("of ${Fmt.duration(s.needMin)} need", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
         Spacer(Modifier.height(12.dp))
-        s.last?.let { l ->
+        if (!hold) s.last?.let { l ->
             StackBar(listOf((l.deepMin ?: 0).toFloat() to h.deep, (l.lightMin ?: 0).toFloat() to h.light, (l.remMin ?: 0).toFloat() to h.rem, (l.awakeMin ?: 0).toFloat() to h.awake), height = 8.dp)
         }
         Spacer(Modifier.height(10.dp))
@@ -248,6 +301,8 @@ private fun SleepTile(m: Model, modifier: Modifier, onClick: () -> Unit) {
 private fun MoveTile(m: Model, modifier: Modifier, onClick: () -> Unit) {
     val a = m.insights.activity
     val h = Brand.health
+    val numbers = m.settings.showNumbers()
+    val paused = m.insights.mode != null
     Tile(modifier, onClick) {
         TileLabel("Move", h.steps)
         Spacer(Modifier.height(10.dp))
@@ -255,20 +310,51 @@ private fun MoveTile(m: Model, modifier: Modifier, onClick: () -> Unit) {
             Ring((a.stepsToday ?: 0) / a.stepGoal.toFloat(), h.steps, Modifier.size(52.dp), stroke = 6.dp)
             Spacer(Modifier.width(12.dp))
             Column {
-                Text(a.stepsToday?.let { "%,d".format(it) } ?: "—", style = MaterialTheme.typography.titleLarge.merge(Numeric), fontWeight = FontWeight.Bold)
+                if (numbers) {
+                    Text(a.stepsToday?.let { "%,d".format(it) } ?: "—", style = MaterialTheme.typography.titleLarge.merge(Numeric), fontWeight = FontWeight.Bold)
+                } else {
+                    Text(if (paused) "Paused" else stepsWord(a.stepsToday, a.stepGoal, localHour(m)), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                }
                 Text("steps", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Spacer(Modifier.height(14.dp))
-        Text("${a.activeWeek} / ${a.activeGoal} min", style = MaterialTheme.typography.titleSmall.merge(Numeric))
+        when {
+            paused -> Text("Targets paused", style = MaterialTheme.typography.titleSmall)
+            numbers -> Text("${a.activeWeek} / ${a.activeGoal} min", style = MaterialTheme.typography.titleSmall.merge(Numeric))
+            else -> Text(activeWord(a.activeWeek, a.activeGoal), style = MaterialTheme.typography.titleSmall)
+        }
         Text("active this week", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+private fun sleepWord(l: Level) = when (l) {
+    Level.Great -> "Slept well"
+    Level.Good -> "Nearly enough"
+    Level.Fair -> "Short night"
+    Level.Low -> "Very short night"
+    Level.Unknown -> "No sleep yet"
+}
+
+/** Steps against the goal, pro-rated over a 07:00–21:00 day. */
+private fun stepsWord(steps: Int?, goal: Int, hour: Int): String {
+    val s = steps ?: return "No steps yet"
+    if (s >= goal) return "Goal reached"
+    val dayShare = ((hour - 7) / 14f).coerceIn(0.15f, 1f)
+    return if (s >= goal * dayShare * 0.9f) "On track" else "Behind"
+}
+
+private fun activeWord(week: Int, goal: Int) = when {
+    week >= goal -> "Target met"
+    week >= goal / 2 -> "On track"
+    else -> "Behind"
 }
 
 @Composable
 private fun Signals(m: Model, onMetric: (Metric) -> Unit) {
     val h = Brand.health
     val metrics = listOf(Metric.Hrv, Metric.RestingHr, Metric.Breathing)
+    val numbers = m.settings.showNumbers()
     Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.padding(vertical = 8.dp)) {
             metrics.forEachIndexed { i, metric ->
@@ -278,13 +364,24 @@ private fun Signals(m: Model, onMetric: (Metric) -> Unit) {
                 Row(Modifier.fillMaxWidth().clickable { onMetric(metric) }.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(10.dp).clip(CircleShape).background(if (n.level == Level.Unknown) MaterialTheme.colorScheme.outlineVariant else h.of(n.level)))
                     Spacer(Modifier.width(14.dp))
+                    val signal = when (metric) { Metric.Hrv -> m.insights.hrv; Metric.RestingHr -> m.insights.rhr; else -> m.insights.resp }
+                    val chip = signalChip(signal)
                     Column(Modifier.weight(1f)) {
-                        Text(metric.label, style = MaterialTheme.typography.titleSmall)
-                        Text(n.status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(metric.label, style = MaterialTheme.typography.titleSmall)
+                            chip?.let { Spacer(Modifier.width(8.dp)); QuietChip(it) }
+                        }
+                        Text(
+                            if (signal.today == null) "No reading last night" else n.status,
+                            style = if (numbers) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
-                    Text(n.value, style = MaterialTheme.typography.titleLarge.merge(Numeric), fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.width(4.dp))
-                    Text(n.unit, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (numbers) {
+                        Text(n.value, style = MaterialTheme.typography.titleLarge.merge(Numeric), fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(4.dp))
+                        Text(n.unit, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }
