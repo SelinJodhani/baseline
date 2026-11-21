@@ -39,6 +39,8 @@ data class AppSettings(
     val geminiModel: String = "gemini-3.5-flash-lite",
     val lastUpdateCheck: Long = 0,
     val skippedVersion: String = "",
+    /** Gemini model used to read lab reports and InBody sheets (needs PDF / image input). */
+    val geminiDocModel: String = "gemini-3.6-flash",
 )
 
 /**

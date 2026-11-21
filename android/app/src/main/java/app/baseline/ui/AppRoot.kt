@@ -49,6 +49,8 @@ import app.baseline.ui.today.TodayScreen
 import app.baseline.ui.body.BodyScreen
 import app.baseline.ui.story.Metric
 import app.baseline.ui.story.StoryScreen
+import app.baseline.labs.ui.BodyCompScreen
+import app.baseline.labs.ui.LabsScreen
 
 private data class Tab(val label: String, val icon: ImageVector, val selected: ImageVector)
 
@@ -83,24 +85,28 @@ private fun Main(vm: AppViewModel) {
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showConnect by rememberSaveable { mutableStateOf(false) }
     var story by rememberSaveable { mutableStateOf<Metric?>(null) }
+    var showLabs by rememberSaveable { mutableStateOf(false) }
+    var showBodyComp by rememberSaveable { mutableStateOf(false) }
     val pairing by vm.pairing.collectAsStateWithLifecycle()
     LaunchedEffect(pairing) { if (pairing != null) { showConnect = true } }
     val requested by vm.requestedTab.collectAsStateWithLifecycle()
     LaunchedEffect(requested) {
-        requested?.let { tab = it.coerceIn(0, 3); story = null; showSettings = false; showConnect = false; vm.consumeTab() }
+        requested?.let { tab = it.coerceIn(0, 3); story = null; showLabs = false; showBodyComp = false; showSettings = false; showConnect = false; vm.consumeTab() }
     }
 
-    BackHandler(enabled = showSettings || showConnect || story != null || tab != 0) {
+    BackHandler(enabled = showSettings || showConnect || showLabs || showBodyComp || story != null || tab != 0) {
         when {
             showConnect -> showConnect = false
             showSettings -> showSettings = false
+            showLabs -> showLabs = false
+            showBodyComp -> showBodyComp = false
             story != null -> story = null
             else -> tab = 0
         }
     }
 
     AnimatedContent(
-        targetState = when { showConnect -> 3; showSettings -> 2; story != null -> 1; else -> 0 },
+        targetState = when { showConnect -> 5; showSettings -> 4; showLabs -> 3; showBodyComp -> 2; story != null -> 1; else -> 0 },
         transitionSpec = {
             if (targetState > initialState) (slideInHorizontally { it / 3 } + fadeIn()) togetherWith fadeOut()
             else fadeIn() togetherWith (slideOutHorizontally { it / 3 } + fadeOut())
@@ -108,12 +114,14 @@ private fun Main(vm: AppViewModel) {
         label = "overlay",
     ) { layer ->
         when (layer) {
-            3 -> ConnectScreen(
+            5 -> ConnectScreen(
                 vm, initialUrl = pairing?.first ?: vm.settings.value?.serverUrl.orEmpty(), initialToken = pairing?.second.orEmpty(),
                 onBack = { showConnect = false; vm.pairing.value = null }, onDone = { showConnect = false; showSettings = false; vm.pairing.value = null },
             )
-            2 -> SettingsScreen(vm, onBack = { showSettings = false }, onConnect = { showConnect = true })
-            1 -> model?.let { m -> story?.let { StoryScreen(m, it, onBack = { story = null }) } } ?: Box(Modifier.fillMaxSize())
+            4 -> SettingsScreen(vm, onBack = { showSettings = false }, onConnect = { showConnect = true })
+            3 -> LabsScreen(onBack = { showLabs = false }, onOpenSettings = { showSettings = true })
+            2 -> BodyCompScreen(onBack = { showBodyComp = false }, onOpenSettings = { showSettings = true })
+            1 -> model?.let { m -> story?.let { StoryScreen(m, it, onBack = { story = null }, onOpenSettings = { showSettings = true }) } } ?: Box(Modifier.fillMaxSize())
             else -> Scaffold(
                 containerColor = MaterialTheme.colorScheme.surface,
                 bottomBar = {
@@ -147,7 +155,7 @@ private fun Main(vm: AppViewModel) {
                                     onSync = { vm.syncNow() }, onOpenZepp = { vm.syncOnReturn = true },
                                 )
                                 1 -> SleepScreen(m, onRefresh = { vm.pullToRefresh() }, onMetric = openMetric)
-                                2 -> BodyScreen(m, onRefresh = { vm.pullToRefresh() }, onMetric = openMetric)
+                                2 -> BodyScreen(m, onRefresh = { vm.pullToRefresh() }, onMetric = openMetric, onLabs = { showLabs = true }, onBodyComp = { showBodyComp = true })
                                 else -> ActivityScreen(m, onRefresh = { vm.pullToRefresh() }, onMetric = openMetric)
                             }
                         }

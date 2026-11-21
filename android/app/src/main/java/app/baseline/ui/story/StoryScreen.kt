@@ -49,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.baseline.Model
+import app.baseline.ai.MetricAiCard
 import app.baseline.insight.Level
 import app.baseline.insight.Rules
 import app.baseline.insight.Stats
@@ -62,7 +63,7 @@ import app.baseline.ui.theme.Numeric
 import app.baseline.ui.theme.Brand
 
 @Composable
-fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit) {
+fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit, onOpenSettings: () -> Unit = {}) {
     val h = Brand.health
     val sp = spec(metric, h)
     val story = storyOf(metric)
@@ -156,6 +157,7 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit) {
                     IntradayChart(rows, from, from + 86400, h.heart, { Fmt.hour(it, zone) })
                 }
             }
+            item { MetricAiCard(m, metric, sp, onOpenSettings) }
             item { Section(Icons.Rounded.Lightbulb, "Why it matters", sp.color) { Body(story.why) } }
             item { Section(Icons.Rounded.Visibility, "What to look for", sp.color) { Bullets(story.lookFor, sp.color) } }
             item { Section(Icons.Rounded.AutoGraph, "How to improve", sp.color) { Bullets(story.improve, sp.color, numbered = true) } }

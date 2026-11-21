@@ -7,18 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonArray
-import kotlinx.serialization.json.putJsonObject
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
-import java.net.URLEncoder
 import kotlin.math.roundToInt
 
 @Serializable
@@ -67,40 +56,16 @@ object BriefService {
 
     suspend fun generate(ctx: Context, i: Insights, key: String, model: String): Result<Brief> = withContext(Dispatchers.IO) {
         runCatching {
-            val m = URLEncoder.encode(model.ifBlank { "gemini-3.5-flash-lite" }, "UTF-8")
-            val conn = URL("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent").openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.connectTimeout = 15_000; conn.readTimeout = 45_000
-            conn.doOutput = true
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.setRequestProperty("x-goog-api-key", key.trim())
-            val body = buildJsonObject {
-                putJsonObject("systemInstruction") { putJsonArray("parts") { add(buildJsonObject { put("text", SYSTEM) }) } }
-                putJsonArray("contents") {
-                    add(buildJsonObject {
-                        put("role", "user")
-                        putJsonArray("parts") { add(buildJsonObject { put("text", "Today's numbers:\n" + digest(i)) }) }
-                    })
-                }
-                putJsonObject("generationConfig") { put("temperature", 0.5); put("maxOutputTokens", 1024) }
-            }
-            conn.outputStream.use { it.write(body.toString().toByteArray()) }
-            val code = conn.responseCode
-            val text = (if (code in 200..299) conn.inputStream else conn.errorStream)?.use { it.readBytes().decodeToString() }.orEmpty()
-            conn.disconnect()
-            if (code !in 200..299) {
-                val msg = runCatching { json.parseToJsonElement(text).jsonObject["error"]?.jsonObject?.get("message")?.jsonPrimitive?.content }.getOrNull()
-                error(when (code) { 400, 403 -> "Gemini rejected the request: ${msg ?: "check the API key"}"; 404 -> "Model not found: $model"; 429 -> "Gemini rate limit — try later"; else -> "Gemini HTTP $code ${msg ?: ""}" })
-            }
-            val root = json.parseToJsonElement(text).jsonObject
-            val out = root["candidates"]?.jsonArray?.firstOrNull()?.jsonObject?.get("content")?.jsonObject?.get("parts")?.jsonArray
-                ?.mapNotNull { (it as? JsonObject)?.get("text")?.jsonPrimitive?.content }?.joinToString("")?.trim()
-            require(!out.isNullOrBlank()) { "Gemini returned no text" }
-            Brief(i.today.toString(), out, model).also {
+            val m = model.ifBlank { Gemini.DEFAULT_TEXT_MODEL }
+            val out = Gemini.generate(
+                key = key, model = m, system = SYSTEM,
+                parts = listOf(Gemini.Part.Text("Today's numbers:\n" + digest(i))),
+                temperature = 0.5, maxOutputTokens = 1024, readTimeoutMs = 45_000,
+            )
+            Brief(i.today.toString(), out, m).also {
                 cacheFile(ctx).parentFile?.mkdirs()
                 cacheFile(ctx).writeText(json.encodeToString(Brief.serializer(), it))
             }
         }
     }
-
 }
