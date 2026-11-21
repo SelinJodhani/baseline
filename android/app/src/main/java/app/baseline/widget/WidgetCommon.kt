@@ -48,6 +48,7 @@ import app.baseline.R
 import app.baseline.data.AppSettings
 import app.baseline.data.showNumbers
 import app.baseline.data.DemoData
+import app.baseline.data.Journal
 import app.baseline.data.Sleep
 import app.baseline.insight.InsightEngine
 import app.baseline.insight.Insights
@@ -109,7 +110,7 @@ object WidgetData {
         val summary = app.repository.state.value.summary
         val settings = app.store.settings.first()
         if (summary == null) return WidgetState(null, null, settings.demo)
-        val journal = runCatching { app.journal.journal.first() }.getOrNull() ?: app.baseline.data.Journal()
+        val journal = runCatching { app.journal.journal.first() }.getOrNull() ?: Journal()
         return compute(summary, settings, summary.freshness.lastReadingAt, settings.demo, journal)
     }
 
@@ -118,7 +119,7 @@ object WidgetData {
 
     private fun compute(
         summary: app.baseline.data.Summary, settings: AppSettings, lastAt: Long?, demo: Boolean,
-        journal: app.baseline.data.Journal = app.baseline.data.Journal(),
+        journal: Journal = Journal(),
     ): WidgetState =
         runCatching {
             val engine = InsightEngine(summary, settings, journal = journal)
