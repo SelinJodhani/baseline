@@ -30,6 +30,12 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent?) {
         val tab = intent?.getIntExtra(EXTRA_TAB, -1) ?: -1
         if (tab >= 0) vm.openTab(tab)
+        val data = intent?.data
+        if (data?.scheme == "baseline" && data.host == "connect") {
+            val url = data.getQueryParameter("url").orEmpty()
+            if (url.startsWith("https://") || url.startsWith("http://")) vm.pair(url, data.getQueryParameter("token").orEmpty())
+            intent.data = null // don't re-apply on rotation
+        }
     }
 
     override fun onResume() {

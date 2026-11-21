@@ -56,9 +56,9 @@ import kotlinx.coroutines.launch
 const val SETUP_GUIDE_URL = "https://github.com/SelinJodhani/baseline/blob/main/docs/SETUP.md"
 
 @Composable
-fun ConnectScreen(vm: AppViewModel, initialUrl: String, onBack: (() -> Unit)?, onDone: () -> Unit = {}) {
-    var url by rememberSaveable { mutableStateOf(initialUrl) }
-    var token by remember { mutableStateOf("") }
+fun ConnectScreen(vm: AppViewModel, initialUrl: String, initialToken: String = "", onBack: (() -> Unit)?, onDone: () -> Unit = {}) {
+    var url by rememberSaveable(initialUrl) { mutableStateOf(initialUrl) }
+    var token by remember(initialToken) { mutableStateOf(initialToken) }
     var show by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }

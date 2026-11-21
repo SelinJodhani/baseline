@@ -252,7 +252,7 @@ class InsightEngine(private val s: Summary, private val settings: AppSettings, n
             val nights = s.days.count { it.sleepHrv != null }
             return Readiness(
                 score = null, level = Level.Unknown,
-                headline = if (nights < Rules.MIN_BASELINE) "Learning your normal" else "Waiting for last night's data",
+                headline = if (nights < Rules.MIN_BASELINE) "Calibrating" else "Waiting for data",
                 contributors = contributors,
                 calibratingNights = nights.takeIf { it < Rules.MIN_BASELINE },
                 zeppScore = zepp,

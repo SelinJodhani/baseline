@@ -110,6 +110,23 @@ def cli_exporter(start: str, end: str, types: str) -> dict:
     return json.loads(proc.stdout)
 
 
+MAX_EXPORT_DAYS = 366  # zeppbridge-cli refuses longer single exports
+
+
+def export_range(exporter: Exporter, start: dt.date, end: dt.date, types: str) -> dict:
+    """Export [start, end] in <= 366-day chunks and merge the data lists."""
+    merged: dict[str, list] = {}
+    cur = start
+    while cur <= end:
+        stop = min(end, cur + dt.timedelta(days=MAX_EXPORT_DAYS - 1))
+        doc = exporter(cur.isoformat(), stop.isoformat(), types)
+        for key, rows in (doc.get("data") or {}).items():
+            if isinstance(rows, list):
+                merged.setdefault(key, []).extend(rows)
+        cur = stop + dt.timedelta(days=1)
+    return {"data": merged}
+
+
 # ------------------------------------------------------------------ transform
 
 def _round(v: Any, nd: int = 1) -> Any:
@@ -308,7 +325,7 @@ class SummaryCache:
             short_start = (today - dt.timedelta(days=INTRADAY_DAYS - 1)).isoformat()
             end = today.isoformat()
             t0 = time.monotonic()
-            long_doc = self.exporter(start, end, LONG_TYPES)
+            long_doc = export_range(self.exporter, today - dt.timedelta(days=days - 1), today, LONG_TYPES)
             short_doc = self.exporter(short_start, end, SHORT_TYPES)
             summary = build_summary(long_doc, short_doc, start=start, end=end, data_modified=mtime)
             body = json.dumps(summary, separators=(",", ":"), ensure_ascii=False).encode()
@@ -389,7 +406,23 @@ def make_handler(cache: SummaryCache, token: str, max_days: int):
     return Handler
 
 
+def pair(argv: list[str]) -> int:
+    """Print a baseline://connect link (and nothing else) for the app. Run it yourself; it is never logged."""
+    from urllib.parse import quote
+    if len(argv) != 1 or not argv[0].startswith(("https://", "http://")):
+        print("usage: baseline_bridge.py pair https://your-bridge-address", file=sys.stderr)
+        return 2
+    token = os.environ.get("BASELINE_TOKEN", "")
+    if len(token) < 24:
+        print("BASELINE_TOKEN is not set in this environment", file=sys.stderr)
+        return 2
+    print(f"baseline://connect?url={quote(argv[0].rstrip('/'), safe='')}&token={quote(token, safe='')}")
+    return 0
+
+
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "pair":
+        return pair(sys.argv[2:])
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stdout)
     token = os.environ.get("BASELINE_TOKEN", "")
     if len(token) < 24:

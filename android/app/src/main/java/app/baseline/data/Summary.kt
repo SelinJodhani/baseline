@@ -2,6 +2,7 @@ package app.baseline.data
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
 import java.time.LocalDate
 
 /**
@@ -91,9 +92,18 @@ data class Sleep(
     val awakeMin: Int? = null,
     val wakeCount: Int? = null,
     val score: Int? = null,
-    /** [startEpoch, endEpoch, stage] where stage is deep | light | rem | awake. */
-    val stages: List<List<String>>? = null,
+    /** [startEpoch, endEpoch, stage] where stage is deep | light | rem | awake (mixed JSON types). */
+    val stages: List<List<JsonPrimitive>>? = null,
 ) {
+    /** Stages as (start, end, name), skipping malformed rows. */
+    val stageSpans: List<Triple<Long, Long, String>>
+        get() = stages.orEmpty().mapNotNull { r ->
+            val a = r.getOrNull(0)?.content?.toDoubleOrNull()?.toLong()
+            val b = r.getOrNull(1)?.content?.toDoubleOrNull()?.toLong()
+            val k = r.getOrNull(2)?.content
+            if (a != null && b != null && k != null && b > a) Triple(a, b, k) else null
+        }
+
     /** Minutes actually asleep (time in bed minus awake), falling back to stage sums. */
     val asleepMin: Int
         get() = durationMin ?: listOfNotNull(deepMin, lightMin, remMin).sum()

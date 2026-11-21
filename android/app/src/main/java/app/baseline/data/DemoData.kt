@@ -1,5 +1,6 @@
 package app.baseline.data
 
+import kotlinx.serialization.json.JsonPrimitive
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
@@ -131,14 +132,14 @@ object DemoData {
     }
 
     private fun buildSleep(r: Random, bed: Long, asleepTarget: Int, ill: Double, keepStages: Boolean): Sleep {
-        val stages = mutableListOf<List<String>>()
+        val stages = mutableListOf<List<JsonPrimitive>>()
         var t = bed
         var asleep = 0
         var deep = 0; var light = 0; var rem = 0; var awake = 0; var wakes = 0
         var cycle = 0
         fun add(stage: String, minutes: Int) {
             val m = max(1, minutes)
-            stages += listOf(t.toString(), (t + m * 60).toString(), stage)
+            stages += listOf(JsonPrimitive(t), JsonPrimitive(t + m * 60), JsonPrimitive(stage))
             t += m * 60
             when (stage) { "deep" -> deep += m; "light" -> light += m; "rem" -> rem += m; else -> awake += m }
             if (stage != "awake") asleep += m

@@ -66,10 +66,7 @@ fun SleepScreen(m: Model, onRefresh: () -> Unit, onMetric: (Metric) -> Unit) {
                 }
                 Text("${Fmt.clock(last.start, zone)} – ${Fmt.clock(last.end, zone)}  ·  need ${Fmt.duration(s.needMin)}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(18.dp))
-                val stages = last.stages.orEmpty().mapNotNull { st ->
-                    val a = st.getOrNull(0)?.toLongOrNull(); val b = st.getOrNull(1)?.toLongOrNull(); val k = st.getOrNull(2)
-                    if (a != null && b != null && k != null) Triple(a, b, k) else null
-                }
+                val stages = last.stageSpans
                 if (stages.isNotEmpty()) {
                     Hypnogram(stages, mapOf("deep" to h.deep, "light" to h.light, "rem" to h.rem, "awake" to h.awake), { Fmt.hour(it, zone) }, zone = zone)
                 } else {

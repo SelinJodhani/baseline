@@ -66,6 +66,20 @@ class TransformTest(unittest.TestCase):
         self.assertEqual(self.s["freshness"]["lastReadingAt"], sl["end"])
 
 
+class ChunkTest(unittest.TestCase):
+    def test_long_ranges_are_chunked(self):
+        import datetime as dt
+        calls = []
+        def exporter(start, end, types):
+            calls.append((start, end))
+            d0, d1 = dt.date.fromisoformat(start), dt.date.fromisoformat(end)
+            self.assertLessEqual((d1 - d0).days + 1, 366)
+            return {"data": {"daily_metrics": [{"date": start}]}}
+        doc = b.export_range(exporter, dt.date(2025, 1, 1), dt.date(2026, 6, 30), "x")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(doc["data"]["daily_metrics"]), 2)
+
+
 class HttpTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

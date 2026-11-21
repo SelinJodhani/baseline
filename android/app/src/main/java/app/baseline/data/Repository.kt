@@ -155,8 +155,8 @@ class Repository(private val context: Context, private val store: SecureStore) {
             is java.net.ConnectException -> "Couldn't connect — is the bridge running and reachable?"
             is java.net.SocketTimeoutException -> "The bridge took too long to answer"
             is javax.net.ssl.SSLException -> "TLS problem: ${t.message ?: "certificate not trusted"}"
-            is IllegalArgumentException -> t.message ?: "Invalid URL"
             is kotlinx.serialization.SerializationException -> "The bridge sent data this app can't read — update both"
+            is IllegalArgumentException -> t.message ?: "Invalid URL"
             else -> t.message ?: t.javaClass.simpleName
         }
 

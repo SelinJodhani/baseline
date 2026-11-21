@@ -24,6 +24,13 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Pairing link printed by `baseline_bridge.py pair`: fills in the connect form. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="baseline" android:host="connect" />
+            </intent-filter>
         </activity>
 
         <!-- Home-screen / lock-screen widgets (Glance). Refreshed by RefreshWorker and on app refresh. -->

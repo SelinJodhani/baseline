@@ -74,6 +74,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun openTab(tab: Int) { _requestedTab.value = tab }
     fun consumeTab() { _requestedTab.value = null }
 
+    /** A pairing link the user opened: (url, token) to prefill the connect form. */
+    val pairing = kotlinx.coroutines.flow.MutableStateFlow<Pair<String, String>?>(null)
+    fun pair(url: String, token: String) { pairing.value = url to token }
+
     fun update(transform: (AppSettings) -> AppSettings) = viewModelScope.launch { store.update(transform) }
 
     suspend fun test(url: String, token: String): String? = Repository.testConnection(url.trim(), token.trim())

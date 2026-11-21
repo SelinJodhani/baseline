@@ -66,7 +66,10 @@ fun AppRoot(vm: AppViewModel) {
     BaselineTheme(mode = s?.theme ?: "system", dynamic = s?.dynamicColor ?: true) {
         when {
             s == null -> Box(Modifier.fillMaxSize())
-            !s.onboarded -> ConnectScreen(vm, initialUrl = s.serverUrl, onBack = null)
+            !s.onboarded -> {
+                val pairing by vm.pairing.collectAsStateWithLifecycle()
+                ConnectScreen(vm, initialUrl = pairing?.first ?: s.serverUrl, initialToken = pairing?.second.orEmpty(), onBack = null)
+            }
             else -> Main(vm)
         }
     }
@@ -80,6 +83,8 @@ private fun Main(vm: AppViewModel) {
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showConnect by rememberSaveable { mutableStateOf(false) }
     var story by rememberSaveable { mutableStateOf<Metric?>(null) }
+    val pairing by vm.pairing.collectAsStateWithLifecycle()
+    LaunchedEffect(pairing) { if (pairing != null) { showConnect = true } }
     val requested by vm.requestedTab.collectAsStateWithLifecycle()
     LaunchedEffect(requested) {
         requested?.let { tab = it.coerceIn(0, 3); story = null; showSettings = false; showConnect = false; vm.consumeTab() }
@@ -103,7 +108,10 @@ private fun Main(vm: AppViewModel) {
         label = "overlay",
     ) { layer ->
         when (layer) {
-            3 -> ConnectScreen(vm, initialUrl = vm.settings.value?.serverUrl.orEmpty(), onBack = { showConnect = false }, onDone = { showConnect = false; showSettings = false })
+            3 -> ConnectScreen(
+                vm, initialUrl = pairing?.first ?: vm.settings.value?.serverUrl.orEmpty(), initialToken = pairing?.second.orEmpty(),
+                onBack = { showConnect = false; vm.pairing.value = null }, onDone = { showConnect = false; showSettings = false; vm.pairing.value = null },
+            )
             2 -> SettingsScreen(vm, onBack = { showSettings = false }, onConnect = { showConnect = true })
             1 -> model?.let { m -> story?.let { StoryScreen(m, it, onBack = { story = null }) } } ?: Box(Modifier.fillMaxSize())
             else -> Scaffold(
