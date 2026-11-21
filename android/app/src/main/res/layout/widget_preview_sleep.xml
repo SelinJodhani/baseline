@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static picker preview (Android 12–14; 15+ uses generated Glance previews). Demo values only. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/wpreview_squircle"
+    android:backgroundTint="@color/w_a3_container"
+    android:orientation="vertical"
+    android:padding="18dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:drawableStart="@drawable/ic_w_moon"
+        android:drawablePadding="5dp"
+        android:drawableTint="@color/w_on_a3_container"
+        android:text="Last night"
+        android:textColor="@color/w_on_a3_container_var"
+        android:textSize="12sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="7h 32m"
+        android:textColor="@color/w_on_a3_container"
+        android:textSize="26sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="of 8h need"
+        android:textColor="@color/w_on_a3_container_var"
+        android:textSize="12sp" />
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="8dp"
+        android:orientation="horizontal">
+
+        <ImageView android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="22"
+            android:importantForAccessibility="no" android:scaleType="fitXY" android:src="@drawable/wshape_pill" android:tint="@color/w_stage_deep" />
+        <ImageView android:layout_width="0dp" android:layout_height="match_parent" android:layout_marginStart="2dp" android:layout_weight="50"
+            android:importantForAccessibility="no" android:scaleType="fitXY" android:src="@drawable/wshape_pill" android:tint="@color/w_stage_light" />
+        <ImageView android:layout_width="0dp" android:layout_height="match_parent" android:layout_marginStart="2dp" android:layout_weight="22"
+            android:importantForAccessibility="no" android:scaleType="fitXY" android:src="@drawable/wshape_pill" android:tint="@color/w_stage_rem" />
+        <ImageView android:layout_width="0dp" android:layout_height="match_parent" android:layout_marginStart="2dp" android:layout_weight="6"
+            android:importantForAccessibility="no" android:scaleType="fitXY" android:src="@drawable/wshape_pill" android:tint="@color/w_stage_awake" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Bed by 10:45 pm"
+        android:textColor="@color/w_on_a3_container"
+        android:textSize="12sp" />
+</LinearLayout>

@@ -1,48 +1,54 @@
 package app.baseline.widget
 
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProviderInfo
 import android.content.Context
+import android.text.format.DateFormat
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.DpSize
-import androidx.compose.ui.unit.dp
 import androidx.glance.GlanceId
-import androidx.glance.GlanceTheme
 import androidx.glance.LocalSize
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.LocalAppWidgetOptions
 import androidx.glance.appwidget.PreviewSizeMode
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.provideContent
 
 /**
- * Base for every Baseline widget: loads one [WidgetState], draws the shared surface + empty state,
- * and renders a fictional demo state for the launcher's generated preview (Android 15+).
+ * Base for every Baseline widget. Loads one [WidgetState] per update and renders at the exact size the
+ * launcher gives (SizeMode.Exact), so each widget can tune its shape and layout to the real cell size.
+ *
+ * Generated previews (Android 15+) render the same composables with fictional demo data at a few
+ * representative sizes; the lock-screen preview uses the lock-screen look.
  */
-abstract class BaselineWidget(private val tab: Int, sizes: Set<DpSize>) : GlanceAppWidget() {
-    private val responsive = SizeMode.Responsive(sizes)
+abstract class BaselineWidget(previewSizes: Set<DpSize>) : GlanceAppWidget() {
     override val sizeMode: SizeMode = SizeMode.Exact
-    override val previewSizeMode: PreviewSizeMode = responsive
+    override val previewSizeMode: PreviewSizeMode = SizeMode.Responsive(previewSizes)
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val state = WidgetData.load(context)
-        provideContent { Frame(context, state) }
+        val numbers = widgetShowNumbers(context)
+        val palette = Palette(context)
+        provideContent { Root(context, state, palette, numbers, previewCategory = null) }
     }
 
     override suspend fun providePreview(context: Context, widgetCategory: Int) {
         val state = WidgetData.preview()
-        provideContent { Frame(context, state) }
+        val palette = Palette(context)
+        provideContent { Root(context, state, palette, numbers = true, previewCategory = widgetCategory) }
     }
 
     @Composable
-    private fun Frame(context: Context, state: WidgetState) {
-        GlanceTheme {
-            val size = LocalSize.current
-            val compact = size.width < 140.dp || size.height < 100.dp
-            WidgetSurface(context, tab, padding = if (compact) 10.dp else 14.dp) {
-                val i = state.insights
-                if (i == null) EmptyState(compact) else Content(context, state, size)
-            }
-        }
+    private fun Root(context: Context, state: WidgetState, palette: Palette, numbers: Boolean, previewCategory: Int?) {
+        val category = previewCategory
+            ?: LocalAppWidgetOptions.current.getInt(AppWidgetManager.OPTION_APPWIDGET_HOST_CATEGORY, AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN)
+        val keyguard = category and AppWidgetProviderInfo.WIDGET_CATEGORY_KEYGUARD != 0
+        val look = Look(numbers = numbers && !keyguard, keyguard = keyguard, is24h = DateFormat.is24HourFormat(context))
+        CompositionLocalProvider(LocalPalette provides palette) { Content(context, state, look, LocalSize.current) }
     }
 
+    /** Draw the widget (including its own shape and the not-connected state, `state.insights == null`). */
     @Composable
-    protected abstract fun Content(context: Context, state: WidgetState, size: DpSize)
+    protected abstract fun Content(context: Context, state: WidgetState, look: Look, size: DpSize)
 }

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Level dot for static picker previews. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <size android:width="6dp" android:height="6dp" />
+    <solid android:color="@color/w_level_great" />
+</shape>

@@ -121,9 +121,11 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                     Spacer(Modifier.height(12.dp))
                     val widgets = listOf(
                         "Today" to app.baseline.widget.TodayWidgetReceiver::class.java,
+                        "Today strip" to app.baseline.widget.TodayPillWidgetReceiver::class.java,
                         "Readiness" to app.baseline.widget.ReadinessWidgetReceiver::class.java,
                         "Sleep" to app.baseline.widget.SleepWidgetReceiver::class.java,
                         "Move" to app.baseline.widget.MoveWidgetReceiver::class.java,
+                        "Body signals" to app.baseline.widget.SignalsWidgetReceiver::class.java,
                     )
                     val mgr = android.appwidget.AppWidgetManager.getInstance(ctx)
                     androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

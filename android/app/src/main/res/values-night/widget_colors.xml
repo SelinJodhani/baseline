@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget palette: Material 3 tonal roles. Fallback below Android 12, dark. -->
+<resources>
+    <!-- Card surface -->
+    <color name="w_surface">#FF191C1B</color>
+    <!-- Primary text on surfaces -->
+    <color name="w_on_surface">#FFE1E3E0</color>
+    <!-- Secondary text on surfaces -->
+    <color name="w_on_surface_var">#FFC0C9C3</color>
+    <!-- Progress track on surfaces -->
+    <color name="w_track">#FF2B322F</color>
+    <!-- Chip fill on surfaces -->
+    <color name="w_chip">#FF344C44</color>
+    <!-- Text on chips -->
+    <color name="w_on_chip">#FFCDE8DD</color>
+    <!-- Primary accent: rings, indicators -->
+    <color name="w_a1">#FF8AD6BD</color>
+    <!-- Primary container (Readiness circle, verb chip) -->
+    <color name="w_a1_container">#FF005141</color>
+    <!-- Text on primary container -->
+    <color name="w_on_a1_container">#FFA6F2D8</color>
+    <!-- Muted text on primary container -->
+    <color name="w_on_a1_container_var">#FF8AD6BD</color>
+    <!-- Track on primary container -->
+    <color name="w_a1_track">#FF156B58</color>
+    <!-- Secondary container (Move) -->
+    <color name="w_a2_container">#FF344C44</color>
+    <!-- Text on secondary container -->
+    <color name="w_on_a2_container">#FFCDE8DD</color>
+    <!-- Muted text on secondary container -->
+    <color name="w_on_a2_container_var">#FFB2CCC2</color>
+    <!-- Track on secondary container -->
+    <color name="w_a2_track">#FF4B635B</color>
+    <!-- Tertiary accent: sleep, active minutes -->
+    <color name="w_a3">#FFBDC2FF</color>
+    <!-- Tertiary, softer (earlier nights) -->
+    <color name="w_a3_mid">#FF6575DA</color>
+    <!-- Tertiary container (Sleep) -->
+    <color name="w_a3_container">#FF3241A4</color>
+    <!-- Text on tertiary container -->
+    <color name="w_on_a3_container">#FFDFE0FF</color>
+    <!-- Muted text on tertiary container -->
+    <color name="w_on_a3_container_var">#FFBDC2FF</color>
+    <!-- Track on tertiary container -->
+    <color name="w_a3_track">#FF4B5BBE</color>
+    <!-- Deep sleep -->
+    <color name="w_stage_deep">#FFDFE0FF</color>
+    <!-- REM sleep -->
+    <color name="w_stage_rem">#FF8AD6BD</color>
+    <!-- Light sleep -->
+    <color name="w_stage_light">#FF7F8FF6</color>
+    <!-- Awake -->
+    <color name="w_stage_awake">#FF4B5BBE</color>
+    <!-- Fixed semantic colours (not wallpaper-driven), same on every API level. -->
+    <color name="w_alert_container">#FF8C1D18</color>
+    <color name="w_on_alert_container">#FFFFDAD6</color>
+    <color name="w_level_great">#FF5EE6B4</color>
+    <color name="w_level_good">#FFB4E86A</color>
+    <color name="w_level_fair">#FFFFC46B</color>
+    <color name="w_level_low">#FFFF8A7A</color>
+    <color name="w_level_unknown">#FF8A938E</color>
+</resources>
