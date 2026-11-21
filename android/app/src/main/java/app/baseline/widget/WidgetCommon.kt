@@ -46,6 +46,7 @@ import app.baseline.BaselineApp
 import app.baseline.MainActivity
 import app.baseline.R
 import app.baseline.data.AppSettings
+import app.baseline.data.showNumbers
 import app.baseline.data.DemoData
 import app.baseline.data.Sleep
 import app.baseline.insight.InsightEngine
@@ -68,7 +69,9 @@ object Tab {
  * instead ("Slept well", "Almost there"). Calm mode will drive this; the lock screen always hides
  * numbers regardless (see [Look]).
  */
-fun widgetShowNumbers(context: Context): Boolean = true
+/** False in calm mode: widgets show words instead of numbers (the lock screen always does). */
+suspend fun widgetShowNumbers(context: Context): Boolean =
+    runCatching { (context.applicationContext as BaselineApp).store.settings.first().showNumbers() }.getOrDefault(true)
 
 /** How a widget instance should present itself. */
 data class Look(
@@ -106,15 +109,19 @@ object WidgetData {
         val summary = app.repository.state.value.summary
         val settings = app.store.settings.first()
         if (summary == null) return WidgetState(null, null, settings.demo)
-        return compute(summary, settings, summary.freshness.lastReadingAt, settings.demo)
+        val journal = runCatching { app.journal.journal.first() }.getOrNull() ?: app.baseline.data.Journal()
+        return compute(summary, settings, summary.freshness.lastReadingAt, settings.demo, journal)
     }
 
     /** A plausible, fictional state for launcher previews (never real data). */
     fun preview(): WidgetState = compute(DemoData.generate(), AppSettings(), System.currentTimeMillis() / 1000, true)
 
-    private fun compute(summary: app.baseline.data.Summary, settings: AppSettings, lastAt: Long?, demo: Boolean): WidgetState =
+    private fun compute(
+        summary: app.baseline.data.Summary, settings: AppSettings, lastAt: Long?, demo: Boolean,
+        journal: app.baseline.data.Journal = app.baseline.data.Journal(),
+    ): WidgetState =
         runCatching {
-            val engine = InsightEngine(summary, settings)
+            val engine = InsightEngine(summary, settings, journal = journal)
             val insights = engine.compute()
             val nights = engine.dates(7).map { d -> engine.mainSleeps[d]?.asleepMin }
             WidgetState(insights, lastAt, demo, nights)

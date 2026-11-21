@@ -53,12 +53,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setFeel(feel: Feel?) = viewModelScope.launch {
         val d = journalDay()
         journalStore.update { it.withFeel(d, feel) }
+        TodayWidget.updateAll(getApplication())
     }
 
     /** Turn Rest / Sick / Travel mode on from today, or off with null. */
     fun setMode(mode: LifeMode?) = viewModelScope.launch {
         val d = journalDay()
         journalStore.update { it.withMode(mode, d) }
+        TodayWidget.updateAll(getApplication())
     }
 
     init {
@@ -138,7 +140,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val pairing = kotlinx.coroutines.flow.MutableStateFlow<Pair<String, String>?>(null)
     fun pair(url: String, token: String) { pairing.value = url to token }
 
-    fun update(transform: (AppSettings) -> AppSettings) = viewModelScope.launch { store.update(transform) }
+    fun update(transform: (AppSettings) -> AppSettings) = viewModelScope.launch {
+        store.update(transform)
+        TodayWidget.updateAll(getApplication()) // calm mode / targets change what widgets show
+    }
 
     suspend fun test(url: String, token: String): String? = Repository.testConnection(url.trim(), token.trim())
 }
