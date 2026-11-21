@@ -214,8 +214,12 @@ fun TrendChart(
                 }
             },
     ) {
+        if (values.none { it != null }) {
+            val m = measurer.measure("Not enough data yet", labelStyle.copy(fontSize = 13.sp))
+            drawText(m, topLeft = Offset((size.width - m.size.width) / 2, (size.height - m.size.height) / 2))
+            return@Canvas
+        }
         val vs = values.filterNotNull() + listOfNotNull(goal) + (average?.filterNotNull() ?: emptyList())
-        if (vs.isEmpty()) return@Canvas
         val left = 36.dp.toPx(); val bottom = 22.dp.toPx(); val top = 8.dp.toPx()
         val w = size.width - left; val h = size.height - bottom - top
         var lo = if (zeroBased) 0.0 else vs.min(); var hi = vs.max()

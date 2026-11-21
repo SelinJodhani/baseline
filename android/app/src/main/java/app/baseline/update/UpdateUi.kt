@@ -31,6 +31,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.baseline.BaselineApp
 import kotlinx.coroutines.launch
 
+private const val PLAY_PROTECT_HINT =
+    "Android said \"App not installed\"? Google Play Protect sometimes blocks apps installed by other apps. Download it from GitHub in your browser instead."
+
 /** A quiet card on Today while an update is available or downloading. Renders nothing otherwise. */
 @Composable
 fun UpdateBanner() {
@@ -43,6 +46,7 @@ fun UpdateBanner() {
         is Updater.State.Available -> s.update
         is Updater.State.Downloading -> s.update
         is Updater.State.Failed -> s.update ?: return
+        is Updater.State.Ready -> s.update
         else -> return
     }
     Surface(shape = RoundedCornerShape(28.dp), color = cs.primaryContainer) {
@@ -56,6 +60,14 @@ fun UpdateBanner() {
                 is Updater.State.Downloading -> {
                     Spacer(Modifier.height(12.dp))
                     LinearProgressIndicator(progress = { s.progress }, modifier = Modifier.fillMaxWidth(), strokeCap = StrokeCap.Round)
+                }
+                is Updater.State.Ready -> {
+                    Spacer(Modifier.height(6.dp))
+                    Text(PLAY_PROTECT_HINT, style = MaterialTheme.typography.bodySmall, color = cs.onPrimaryContainer)
+                    Row {
+                        TextButton(onClick = { Updater.install(ctx, s.file) }) { Text("Install") }
+                        TextButton(onClick = { Updater.openPage(ctx, update.pageUrl) }) { Text("Download from GitHub") }
+                    }
                 }
                 is Updater.State.Failed -> {
                     Spacer(Modifier.height(6.dp))
@@ -99,9 +111,13 @@ fun UpdateSettings() {
                 Button(onClick = { scope.launch { Updater.downloadAndInstall(ctx, s.update) } }) { Text("Update") }
             }
             is Updater.State.Downloading -> LinearProgressIndicator(progress = { s.progress }, modifier = Modifier.fillMaxWidth(), strokeCap = StrokeCap.Round)
-            is Updater.State.Ready -> Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Downloaded ${s.update.version}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                Button(onClick = { Updater.install(ctx, s.file) }) { Text("Install") }
+            is Updater.State.Ready -> Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Downloaded ${s.update.version}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Button(onClick = { Updater.install(ctx, s.file) }) { Text("Install") }
+                }
+                Text(PLAY_PROTECT_HINT, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(onClick = { Updater.openPage(ctx, s.update.pageUrl) }) { Text("Download from GitHub") }
             }
             is Updater.State.Failed -> Column {
                 Text(s.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)

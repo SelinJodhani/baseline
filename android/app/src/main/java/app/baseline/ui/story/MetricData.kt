@@ -40,7 +40,7 @@ fun spec(m: Metric, h: HealthColors): Spec = when (m) {
 }
 
 fun hasData(m: Model, metric: Metric): Boolean = when (metric) {
-    Metric.Readiness -> m.data.summary?.days?.any { it.sleepHrv != null } == true
+    Metric.Readiness -> m.data.summary?.days?.any { it.sleepHrv != null || it.zeppReadiness != null } == true
     Metric.Weight -> m.data.summary?.weights?.isNotEmpty() == true
     Metric.Load -> m.data.summary?.workouts?.any { it.trainingLoad != null } == true
     Metric.Sleep, Metric.Consistency -> m.data.summary?.sleeps?.isNotEmpty() == true
@@ -51,7 +51,8 @@ fun hasData(m: Model, metric: Metric): Boolean = when (metric) {
 fun values(m: Model, metric: Metric, days: Int): List<Double?> {
     val e = m.engine
     return when (metric) {
-        Metric.Readiness -> e.dates(days).map { e.readinessOn(it) }
+        // Baseline's own score needs 14 nights of history; until then (and for any day it can't score) use Zepp's.
+        Metric.Readiness -> e.dates(days).map { d -> e.readinessOn(d) ?: e.day(d)?.zeppReadiness }
         Metric.Hrv -> e.series(days) { it.sleepHrv }
         Metric.RestingHr -> e.series(days) { it.restingHr ?: it.sleepRhr }
         Metric.Breathing -> e.series(days) { it.respRate }
