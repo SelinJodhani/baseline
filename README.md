@@ -20,13 +20,15 @@ Then it gives you **one thing to do today**.
 
 ## Features
 
-- **Today:** a single readiness score with its contributors, one focus sentence, and sleep and movement at a glance.
+- **Today:** readiness as one word (Push, Ready, Easy, Recover) with what drove it, a one-tap "How do you feel?" that softens the advice when you disagree, one focus sentence, and sleep and movement at a glance. Tap the score for a plain-language "why".
 - **A story for every metric:** your personal takeaway, an interactive trend with your normal range, *why it matters*, *what to look for* and *how to improve*. Each story is based on the research in [docs/RESEARCH.md](docs/RESEARCH.md).
-- **Body:** every signal in one quiet list. HRV, resting HR, breathing, sleep rhythm, night oxygen, VO₂max, steps, load, stress and weight.
-- **Widgets:** Today, Readiness, Sleep and Move for the home screen and, where supported, the lock screen. Add them in one tap from Settings.
+- **Body:** every signal in one quiet list, including an early "signals off" warning, the Sleep Regularity Index, sleep need and social jet lag, HRV trend, overnight heart-rate low, time in zones and a suggested movement range for today.
+- **Widgets:** six flat Material You widgets in their own shapes (circle, capsule, squircle, scalloped) for the home screen and, where supported, the lock screen, which shows words only. Add them in one tap from Settings.
 - **Fresh data on demand:** if your data is stale, Today tells you why: the watch syncs to the Zepp cloud only through the Zepp app. One tap opens Zepp, and **Sync now** pulls the cloud right away.
 - **Built-in updates:** new versions install from GitHub Releases, checksum-verified.
-- **Optional AI brief:** a three-sentence morning brief from Google Gemini, using your own key. Only a text digest of the numbers on Today is sent.
+- **Lab reports and InBody (AI):** add a blood-test PDF or photo, or an InBody result sheet. Gemini reads the values, and Baseline shows each biomarker's trend against its range, with a plain summary. Only the extracted values are kept, encrypted on your phone.
+- **Optional AI, your own key:** a morning brief, plus "Explain my …" on every metric page. Only short digests of your numbers are sent.
+- **Comfort settings:** calm mode (words instead of numbers), rest, sick and travel modes that pause targets, and confidence labels whenever data is thin.
 - **Material You:** follows your wallpaper colours, with light and dark themes and no gradients.
 - **Private by design:** no accounts, analytics or cloud. The token is encrypted with the Android Keystore, and nothing goes into backups.
 - **Honest data:** a missing reading is a gap, never a zero. Unreliable metrics (sleep stages, SpO₂, stress) are labelled as such.
