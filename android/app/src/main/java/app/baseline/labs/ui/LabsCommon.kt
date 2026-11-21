@@ -1,5 +1,7 @@
 package app.baseline.labs.ui
 
+import app.baseline.ui.common.StatusBarScrim
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -72,7 +74,7 @@ fun OverlayPage(title: String, subtitle: String?, onBack: () -> Unit, content: L
             }
             content()
         }
-        Box(Modifier.fillMaxWidth().height(top).background(MaterialTheme.colorScheme.surface.copy(alpha = .9f)))
+        StatusBarScrim()
       }
     }
 }

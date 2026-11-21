@@ -40,7 +40,7 @@ fun UpdateBanner() {
     val state by Updater.state.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val store = (ctx.applicationContext as BaselineApp).store
+    val store = (ctx.applicationContext as? BaselineApp)?.store ?: return // previews / tests
     val cs = MaterialTheme.colorScheme
     val update = when (val s = state) {
         is Updater.State.Available -> s.update
