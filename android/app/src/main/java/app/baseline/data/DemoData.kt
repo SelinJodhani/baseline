@@ -16,14 +16,17 @@ import kotlin.random.Random
 
 /**
  * Synthetic, deterministic data for demo mode and screenshots — a fictional person, never real readings.
- * ~7 months: a steady base, a training block, a short illness (HRV down, RHR + breathing rate up) two
- * weeks ago, and a clean recovery since.
+ * ~7 months: a steady base, a training block, a short illness (HRV down, RHR + breathing rate up, skin-temperature
+ * score down — a 2+-night "signals off" episode 12–16 days ago) and a clean recovery since. Stage timelines for the
+ * last 50 nights (Sleep Regularity Index), later weekend sleep (social jet lag), some Sunday naps, and an overnight
+ * HR low for the last 30 nights.
  */
 object DemoData {
     private const val DAYS = 210
 
     fun generate(today: LocalDate = LocalDate.now(), zone: ZoneId = ZoneId.systemDefault()): Summary {
         val r = Random(7)
+        val extra = Random(11)
         val days = mutableListOf<Day>()
         val sleeps = mutableListOf<Sleep>()
         val workouts = mutableListOf<Workout>()
@@ -46,7 +49,6 @@ object DemoData {
             val asleepTarget = (if (weekend) 455.0 else 418.0) + r.gauss(0.0, 26.0) + ill * 40 - (if (dow == 4) 35 else 0)
             val bed = ZonedDateTime.of(date.minusDays(1), LocalTime.MIDNIGHT, zone).plusMinutes(bedMinutes.roundToInt().toLong())
             val sleep = buildSleep(r, bed.toEpochSecond(), asleepTarget.roundToInt(), ill, keepStages = i < 50)
-            sleeps += sleep
 
             // --- Recovery signals
             val hrvLn = ln(58.0) + 0.10 * fitness + 0.06 * sin(i * 2 * PI / 7) - 0.38 * ill +
@@ -54,6 +56,22 @@ object DemoData {
             val hrv = exp(hrvLn)
             val rhr = 57.0 - 2.2 * fitness + 6.5 * ill + (if (sleep.asleepMin < 400) 1.2 else 0.0) + r.gauss(0.0, 1.1)
             val resp = 15.2 + 2.1 * ill + r.gauss(0.0, 0.25)
+
+            // Phase 3 extras use their own generator so the original series stay identical.
+            // Overnight HR low (the bridge sends it for recent nights): usually early, later after Fri/Sat nights out or illness.
+            val nadir = if (i < 30) {
+                val late = dow == 6 || dow == 7 || ill > 0
+                val frac = (if (late) 0.78 else 0.32) + extra.gauss(0.0, 0.08)
+                HrNadir(bpm = (rhr - 5 + 4 * ill + extra.gauss(0.0, 1.0)).roundToInt().toDouble(),
+                    at = sleep.start + ((sleep.end - sleep.start) * frac.coerceIn(0.05, 0.95)).toLong())
+            } else null
+            sleeps += sleep.copy(hrNadir = nadir)
+            // An occasional Sunday-afternoon nap (no stage timeline, like many watch naps).
+            if (dow == 7 && i < 60 && extra.nextDouble() < 0.5) {
+                val napStart = ZonedDateTime.of(date, LocalTime.of(15, 10), zone).toEpochSecond()
+                sleeps += Sleep(start = napStart, end = napStart + 25 * 60, durationMin = 22, lightMin = 22, awakeMin = 3)
+            }
+            val skinTemp = (82 + extra.gauss(0.0, 5.0) - 30 * ill).coerceIn(10.0, 100.0).roundToInt().toDouble()
 
             // --- Activity
             var steps = (if (weekend) 9800.0 else 7200.0) + r.gauss(0.0, 2300.0) - ill * 5200
@@ -116,7 +134,7 @@ object DemoData {
                 stressMediumPct = 9.0, stressHighPct = 3.0,
                 pai = pai.round1(), paiWeek = paiWindow.sum().round1() + 38,
                 lowZoneMin = (moderate * 1.8).roundToInt().toDouble(), moderateZoneMin = moderate.roundToInt().toDouble(), vigorousZoneMin = vigorous.roundToInt().toDouble(),
-                zeppReadiness = zr.roundToInt().toDouble(), charge = (zr - 6 + r.gauss(0.0, 5.0)).coerceIn(5.0, 100.0).roundToInt().toDouble(),
+                zeppReadiness = zr.roundToInt().toDouble(), zeppSkinTempScore = skinTemp, charge = (zr - 6 + r.gauss(0.0, 5.0)).coerceIn(5.0, 100.0).roundToInt().toDouble(),
                 trainingLoad = load.roundToInt().toDouble(), vo2max = vo2.round1(),
             )
         }

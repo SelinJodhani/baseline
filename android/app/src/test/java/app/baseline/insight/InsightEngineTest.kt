@@ -22,13 +22,13 @@ class InsightEngineTest {
     private val now = ZonedDateTime.of(today, LocalTime.of(9, 0), zone).toInstant()
     private val settings = AppSettings(sleepNeedMin = 480)
 
-    /** [n] steady days ending today; [tweakToday] edits today's record. */
-    private fun summary(n: Int, sleepMin: Int = 480, tweakToday: (Day) -> Day = { it }): Summary {
+    /** [n] steady days ending today; [tweakToday] edits the last [nights] records (today and the days before). */
+    private fun summary(n: Int, sleepMin: Int = 480, nights: Int = 1, tweakToday: (Day) -> Day = { it }): Summary {
         val days = (n - 1 downTo 0).map { i ->
             val d = today.minusDays(i.toLong())
             val wobble = if (i % 2 == 0) 1.0 else -1.0
             Day(date = d.toString(), sleepHrv = 60.0 + 3 * wobble, restingHr = 55.0 + wobble, respRate = 15.0 + 0.2 * wobble, steps = 8000.0)
-                .let { if (i == 0) tweakToday(it) else it }
+                .let { if (i < nights) tweakToday(it) else it }
         }
         val sleeps = (n - 1 downTo 0).map { i ->
             val end = ZonedDateTime.of(today.minusDays(i.toLong()), LocalTime.of(7, 0), zone).toEpochSecond()
@@ -51,13 +51,19 @@ class InsightEngineTest {
         assertFalse(i.illnessFlag)
     }
 
-    @Test fun illnessNeedsBothRhrAndBreathing() {
-        val sick = InsightEngine(summary(40) { it.copy(restingHr = 63.0, respRate = 17.0, sleepHrv = 40.0) }, settings, now).compute()
+    @Test fun illnessNeedsTwoSignalsForTwoNights() {
+        val sick = InsightEngine(summary(40, nights = 2) { it.copy(restingHr = 63.0, respRate = 17.0, sleepHrv = 40.0) }, settings, now).compute()
         assertTrue(sick.illnessFlag)
         assertEquals(Focus.Kind.Sick, sick.focus.kind)
         assertEquals(Level.Low, sick.rhr.level)
-        // Elevated RHR alone is not called illness.
-        val tired = InsightEngine(summary(40) { it.copy(restingHr = 63.0) }, settings, now).compute()
+        assertEquals(2, sick.signalsOff!!.nights)
+        assertTrue(sick.focus.body.contains("may be fighting something"))
+        // One night isn't enough.
+        val once = InsightEngine(summary(40) { it.copy(restingHr = 63.0, respRate = 17.0, sleepHrv = 40.0) }, settings, now).compute()
+        assertFalse(once.illnessFlag)
+        assertEquals(1, once.signalsOff!!.nights)
+        // Elevated RHR alone is not called illness, however long it lasts.
+        val tired = InsightEngine(summary(40, nights = 3) { it.copy(restingHr = 63.0) }, settings, now).compute()
         assertFalse(tired.illnessFlag)
     }
 

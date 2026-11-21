@@ -39,6 +39,10 @@ data class AppSettings(
     val geminiModel: String = "gemini-3.5-flash-lite",
     val lastUpdateCheck: Long = 0,
     val skippedVersion: String = "",
+    /** Optional, stays on this device: birth year, for age-based step goals and VO₂max percentiles. */
+    val birthYear: Int? = null,
+    /** Optional, stays on this device: "female", "male" or "" (not set). Only used for VO₂max percentiles. */
+    val sex: String = "",
 )
 
 /**

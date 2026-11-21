@@ -194,6 +194,32 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                     )
                 }
             }
+            item {
+                // About you (optional): birth year + sex for age-based step goals and VO₂max percentiles. Stays on the device.
+                var year by remember(s.birthYear) { mutableStateOf(s.birthYear?.toString() ?: "") }
+                val parsed = year.trim().toIntOrNull()?.takeIf { it in 1900..java.time.LocalDate.now().year - 13 }
+                SectionCard {
+                    Text("About you (optional)", style = MaterialTheme.typography.titleMedium)
+                    Text("Used only for age-based step goals and how your VO₂max compares with your age group. It stays on this phone and is never sent anywhere.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = year, onValueChange = { v -> year = v.filter(Char::isDigit).take(4) }, label = { Text("Birth year") }, singleLine = true,
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                            isError = year.isNotBlank() && parsed == null, modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.padding(start = 10.dp))
+                        TextButton(onClick = { vm.update { it.copy(birthYear = parsed) } }, enabled = (year.isBlank() || parsed != null) && parsed != s.birthYear) { Text("Save") }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    val sexes = listOf("female" to "Female", "male" to "Male", "" to "Not set")
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        sexes.forEachIndexed { i, (k, l) ->
+                            SegmentedButton(selected = s.sex == k, onClick = { vm.update { it.copy(sex = k) } }, shape = SegmentedButtonDefaults.itemShape(i, sexes.size)) { Text(l) }
+                        }
+                    }
+                }
+            }
             item { SectionCard { app.baseline.update.UpdateSettings() } }
             item {
                 SectionCard {

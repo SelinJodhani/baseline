@@ -39,9 +39,9 @@ import app.baseline.ui.theme.Numeric
 import app.baseline.ui.theme.Brand
 
 private val groups = listOf(
-    "Recovery" to listOf(Metric.Readiness, Metric.Hrv, Metric.RestingHr, Metric.Breathing),
-    "Sleep" to listOf(Metric.Sleep, Metric.Consistency, Metric.Spo2),
-    "Fitness" to listOf(Metric.Vo2, Metric.Active, Metric.Steps, Metric.Load),
+    "Recovery" to listOf(Metric.Readiness, Metric.Signals, Metric.Hrv, Metric.HrvTrend, Metric.RestingHr, Metric.HrDip, Metric.Breathing),
+    "Sleep" to listOf(Metric.Sleep, Metric.SleepNeed, Metric.Consistency, Metric.SleepTiming, Metric.Spo2),
+    "Fitness" to listOf(Metric.Movement, Metric.Vo2, Metric.Active, Metric.Zones, Metric.Steps, Metric.Load),
     "Everyday" to listOf(Metric.Stress, Metric.Weight),
 )
 

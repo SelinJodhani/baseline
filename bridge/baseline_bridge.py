@@ -3,7 +3,9 @@
 
 It shells out to `zeppbridge-cli export --format json` (the stable, documented
 `zeppbridge.ai.v2` contract) and reshapes the result into one compact JSON
-document the Baseline Android app understands (`baseline.v1`). It never writes to the
+document the Baseline Android app understands (`baseline.v1`). For the last 30 nights it
+also reads per-minute heart rate (`--detail full`, heart_rate only) and sends just each
+night's lowest heart rate and its time (`hrNadir`). It never writes to the
 ZeppBridge database, never talks to the Zepp cloud, and has no dependencies
 beyond the Python standard library.
 
@@ -38,13 +40,23 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 SCHEMA = "baseline.v1"
 
 LONG_TYPES = "daily_activity,recovery,pai,sleep,workouts,vo2max,weight,training_load"
 SHORT_TYPES = "heart_rate,stress,spo2"
 INTRADAY_DAYS = 8
 SLEEP_STAGE_NIGHTS = 45
+
+# Overnight heart-rate low ("hrNadir" on each sleep). Computed here from the per-minute readings of a
+# `--detail full` heart_rate export over the last HR_NADIR_DAYS only, so the app gets one tiny object per night
+# instead of ~1,400 readings.
+HR_NADIR_DAYS = 30
+NADIR_MIN_SLEEP_MIN = 180   # main sleeps only; naps are skipped
+NADIR_SMOOTH = 5            # rolling mean over 5 consecutive readings (~5 min) so one glitch can't be the low
+NADIR_MAX_SPAN_S = 600      # ...and those 5 readings must fall within 10 minutes
+NADIR_MIN_READINGS = 30     # a night needs this many readings inside the sleep window
+HR_PLAUSIBLE = (25.0, 230.0)
 
 # ZeppBridge daily metric name -> Baseline day field.
 DAILY_FIELDS = {
@@ -99,11 +111,11 @@ log = logging.getLogger("baseline-bridge")
 Exporter = Callable[[str, str, str], dict]
 
 
-def cli_exporter(start: str, end: str, types: str) -> dict:
+def cli_exporter(start: str, end: str, types: str, detail: str = "summary") -> dict:
     """Run zeppbridge-cli export and return the parsed JSON document."""
     cmd = [
         os.environ.get("ZEPPBRIDGE_CLI", "zeppbridge-cli"),
-        "export", "--format", "json", "--detail", "summary",
+        "export", "--format", "json", "--detail", detail,
         "--from", start, "--to", end, "--types", types,
     ]
     proc = subprocess.run(cmd, capture_output=True, timeout=120, check=False)
@@ -185,10 +197,53 @@ def build_weights(samples: list[dict]) -> list[dict]:
     return sorted((w for w in out if w["t"]), key=lambda w: w["t"])
 
 
-def build_sleeps(sessions: list[dict]) -> list[dict]:
+def hr_readings(samples: list[dict]) -> list[tuple[int, float]]:
+    """Per-minute heart rate from a --detail full export: sorted (epoch, bpm), one per timestamp (device wins)."""
+    best: dict[int, tuple[int, float]] = {}
+    for r in samples:
+        if r.get("metric") != "heart_rate" or r.get("value") is None:
+            continue
+        t = _epoch(r.get("timestamp"))
+        try:
+            v = float(r["value"])
+        except (TypeError, ValueError):
+            continue
+        if t is None or not HR_PLAUSIBLE[0] <= v <= HR_PLAUSIBLE[1]:
+            continue
+        rank = SCOPE_RANK.get(r.get("source_scope") or "unknown", 2)
+        if t not in best or rank < best[t][0]:
+            best[t] = (rank, v)
+    return sorted((t, v) for t, (_, v) in best.items())
+
+
+def sleep_nadir(readings: list[tuple[int, float]], times: list[int], start: int, end: int) -> dict | None:
+    """Lowest 5-reading rolling mean inside [start, end] and the time of its middle reading, or None."""
+    import bisect
+    window = readings[bisect.bisect_left(times, start):bisect.bisect_right(times, end)]
+    if len(window) < NADIR_MIN_READINGS:
+        return None
+    best: tuple[float, int] | None = None
+    for i in range(len(window) - NADIR_SMOOTH + 1):
+        chunk = window[i:i + NADIR_SMOOTH]
+        if chunk[-1][0] - chunk[0][0] > NADIR_MAX_SPAN_S:
+            continue
+        avg = sum(v for _, v in chunk) / NADIR_SMOOTH
+        if best is None or avg < best[0]:
+            best = (avg, chunk[NADIR_SMOOTH // 2][0])
+    if best is None:
+        return None
+    return {"bpm": _round(best[0], 0), "at": best[1]}
+
+
+def build_sleeps(sessions: list[dict], hr: list[tuple[int, float]] | None = None,
+                 hr_since: int | None = None) -> list[dict]:
+    """Sleep sessions; stage timelines for the last SLEEP_STAGE_NIGHTS, and an hrNadir for main sleeps that start
+    on or after `hr_since` when per-minute heart rate (`hr`) is available."""
     out = []
     ordered = sorted(sessions, key=lambda s: s.get("start_time") or "")
     stage_cutoff = len(ordered) - SLEEP_STAGE_NIGHTS
+    hr = hr or []
+    hr_times = [t for t, _ in hr]
     for i, s in enumerate(ordered):
         start, end = _epoch(s.get("start_time")), _epoch(s.get("end_time"))
         if start is None or end is None or end <= start:
@@ -211,6 +266,8 @@ def build_sleeps(sessions: list[dict]) -> list[dict]:
                 if a is not None and b is not None and b > a and st.get("stage"):
                     stages.append([a, b, st["stage"]])
             item["stages"] = stages
+        if hr and end - start >= NADIR_MIN_SLEEP_MIN * 60 and (hr_since is None or start >= hr_since):
+            item["hrNadir"] = sleep_nadir(hr, hr_times, start, end)
         out.append({k: v for k, v in item.items() if v is not None})
     return out
 
@@ -267,11 +324,16 @@ def build_workouts(workouts: list[dict]) -> list[dict]:
 
 
 def build_summary(long_doc: dict, short_doc: dict, *, start: str, end: str,
-                  data_modified: float | None) -> dict:
+                  data_modified: float | None, hr_doc: dict | None = None, hr_from: str | None = None) -> dict:
+    """`hr_doc` is an optional --detail full heart_rate export starting on local date `hr_from`."""
     ld, sd = long_doc.get("data", {}), short_doc.get("data", {})
     days = build_days(ld.get("daily_metrics", []))
     hourly = build_hourly(sd.get("metric_samples", []))
-    sleeps = build_sleeps(ld.get("sleep_sessions", []))
+    hr = hr_readings((hr_doc or {}).get("data", {}).get("metric_samples", [])) if hr_doc else None
+    hr_since = None
+    if hr_from:
+        hr_since = int(dt.datetime.combine(dt.date.fromisoformat(hr_from), dt.time(), _local_tz()).timestamp())
+    sleeps = build_sleeps(ld.get("sleep_sessions", []), hr, hr_since)
     last_points = [r[0] for s in hourly.values() for r in s]
     last_points += [s["end"] for s in sleeps]
     max_hr = next((d["maxHr"] for d in reversed(days) if "maxHr" in d), None)
@@ -301,8 +363,9 @@ def build_summary(long_doc: dict, short_doc: dict, *, start: str, end: str,
 class SummaryCache:
     """Re-exports only when the ZeppBridge library changed on disk."""
 
-    def __init__(self, exporter: Exporter, data_dir: str):
-        self.exporter, self.data_dir = exporter, data_dir
+    def __init__(self, exporter: Exporter, data_dir: str, hr_exporter: Exporter | None = None):
+        """`hr_exporter` (optional) returns a --detail full heart_rate export, used only for overnight lows."""
+        self.exporter, self.data_dir, self.hr_exporter = exporter, data_dir, hr_exporter
         self.sync_enabled = False
         self.lock = threading.Lock()
         self.entries: dict[int, tuple[str, bytes, bytes]] = {}
@@ -331,7 +394,14 @@ class SummaryCache:
             t0 = time.monotonic()
             long_doc = export_range(self.exporter, today - dt.timedelta(days=days - 1), today, LONG_TYPES)
             short_doc = self.exporter(short_start, end, SHORT_TYPES)
-            summary = build_summary(long_doc, short_doc, start=start, end=end, data_modified=mtime)
+            hr_doc, hr_from = None, (today - dt.timedelta(days=HR_NADIR_DAYS)).isoformat()
+            if self.hr_exporter:
+                try:
+                    hr_doc = self.hr_exporter(hr_from, end, "heart_rate")
+                except Exception as exc:  # optional extra: the summary still ships without overnight lows
+                    log.warning("per-minute heart-rate export failed; skipping hrNadir: %s", exc)
+            summary = build_summary(long_doc, short_doc, start=start, end=end, data_modified=mtime,
+                                    hr_doc=hr_doc, hr_from=hr_from)
             summary["capabilities"] = {"sync": self.sync_enabled}
             body = json.dumps(summary, separators=(",", ":"), ensure_ascii=False).encode()
             entry = (etag, body, gzip.compress(body, 6))
@@ -503,7 +573,8 @@ def main() -> int:
     port = int(os.environ.get("BASELINE_PORT", "8787"))
     bind = os.environ.get("BASELINE_BIND", "0.0.0.0")
     max_days = int(os.environ.get("BASELINE_MAX_DAYS", "730"))
-    cache = SummaryCache(cli_exporter, os.environ.get("ZEPPBRIDGE_DATA_DIR", "/data"))
+    cache = SummaryCache(cli_exporter, os.environ.get("ZEPPBRIDGE_DATA_DIR", "/data"),
+                         hr_exporter=lambda s, e, t: cli_exporter(s, e, t, "full"))
     sync = SyncJob(os.environ.get("BASELINE_ALLOW_SYNC", "1") not in ("0", "false", "no"),
                    int(os.environ.get("BASELINE_SYNC_COOLDOWN", "120")))
     cache.sync_enabled = sync.enabled
