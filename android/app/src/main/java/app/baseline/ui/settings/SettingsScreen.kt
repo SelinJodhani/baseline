@@ -194,6 +194,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                     )
                 }
             }
+            item { SectionCard { app.baseline.update.UpdateSettings() } }
             item {
                 SectionCard {
                     Text("About", style = MaterialTheme.typography.titleMedium)

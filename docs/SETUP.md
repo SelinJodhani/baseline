@@ -13,7 +13,7 @@ Baseline shows the data your Amazfit watch collects. It reads that data from you
 ```
 
 - **[ZeppBridge](https://github.com/lingcang728/ZeppBridge)** is an open-source tool that copies everything from your Zepp account into a local SQLite library. That includes HRV, sleep stages, SpO₂, stress and readiness.
-- **Baseline Bridge** (in [`bridge/`](../bridge)) is one small Python file. It reads that library through ZeppBridge's documented export and serves a compact JSON feed to the app. It is read-only, needs a token, and has no dependencies beyond the Python standard library.
+- **Baseline Bridge** (in [`bridge/`](../bridge)) is one small Python file. It reads that library through ZeppBridge's documented export and serves a compact JSON feed to the app. It needs a token and has no dependencies beyond the Python standard library. It only reads, except when you tap **Sync now** in the app: then it runs the same `zeppbridge-cli sync` your timer runs. Set `BASELINE_ALLOW_SYNC=0` to turn that off.
 - **Baseline** is this Android app.
 
 Allow about 30–45 minutes the first time. After that it runs on its own.
@@ -137,7 +137,30 @@ You can also type the URL and the token (from `.env`) into the connect screen by
 
 No server yet? Tap **Explore with demo data** to look around with a fictional person's data.
 
-## 6. Make it yours
+## 6. Fresh data: how syncing works
+
+Your data passes through three hops: **watch → Zepp phone app → Zepp cloud → ZeppBridge**. Baseline can only show what has reached the Zepp cloud.
+
+- **The Zepp app on your phone must sync the watch.** It does this in the background, but opening Zepp forces it.
+- **ZeppBridge pulls from the cloud on its timer**, hourly if you followed step 2.
+- **Sync now:** if your latest watch reading is more than 90 minutes old, Today shows a card with **Open Zepp** and **Sync now**.
+  - **Sync now** asks the bridge to pull from the Zepp cloud immediately.
+  - It only appears if the cloud hasn't been checked in the last 10 minutes; otherwise the card says when it was checked.
+  - If you jump to Zepp from the card, Baseline syncs automatically when you come back.
+  - Pull-to-refresh does the same thing when the last check is more than 10 minutes old.
+- If a sync finds nothing new, the card tells you so. That almost always means the watch hasn't synced to the Zepp app yet.
+
+## 7. Updates
+
+Baseline updates itself from this repo's GitHub Releases:
+- It checks at most every 12 hours. When there's a new version, Today shows a small card with **Update**.
+- The APK's SHA-256 is verified against the release's checksum file before Android's installer opens.
+- Android only accepts it if it's signed with the same key as the installed app.
+- You can also check by hand under **Settings → Updates**.
+
+To update the bridge, pull the repo and rebuild: `cd baseline && git pull && cd bridge && docker compose up -d --build`.
+
+## 8. Make it yours
 
 - **Settings → Your targets:** sleep need, daily steps, weekly active minutes.
 - **Settings → Widgets:** add Today, Readiness, Sleep or Move to your home screen with one tap. On Android 16+ devices that support lock-screen widgets, long-press the lock screen and add them there too.
@@ -154,7 +177,9 @@ No server yet? Tap **Explore with demo data** to look around with a fictional pe
 | "The bridge couldn't read ZeppBridge" (503) | Run `docker logs baseline-bridge`. Usually the data folder is wrong, or the container's `user:` doesn't own it. |
 | Readiness says "Calibrating" | It needs 14 nights with HRV. Wear the watch to bed, or run the history backfill from step 2. |
 | Numbers are a day off | Set `TZ` on both the ZeppBridge sync container and the bridge. |
-| Today's data seems stale | The watch syncs to the Zepp cloud through the Zepp phone app. Open it once, then wait for the next ZeppBridge sync. |
+| Today's data seems stale | Open the Zepp app so the watch syncs, then tap **Sync now** on Today, or pull down to refresh. |
+| "Cloud sync is turned off on this bridge" | Remove `BASELINE_ALLOW_SYNC=0` from the bridge's environment. |
+| "This bridge is too old for cloud sync" | Update the bridge (step 7). |
 
 ## Privacy
 

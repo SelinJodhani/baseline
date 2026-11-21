@@ -58,7 +58,7 @@ fun ActivityScreen(m: Model, onRefresh: () -> Unit, onMetric: (app.baseline.ui.s
     val h = Brand.health
     val e = m.engine
     val zone = m.insights.zone
-    RefreshablePage(m.data.refreshing, onRefresh) {
+    RefreshablePage(m.data.refreshing || m.data.syncing, onRefresh) {
         item { ScreenTitle("Move", "Enough movement, built up gradually") }
 
         item {

@@ -48,7 +48,7 @@ private val groups = listOf(
 @Composable
 fun BodyScreen(m: Model, onRefresh: () -> Unit, onMetric: (Metric) -> Unit) {
     val available = remember(m) { Metric.entries.filter { hasData(m, it) }.toSet() }
-    RefreshablePage(m.data.refreshing, onRefresh) {
+    RefreshablePage(m.data.refreshing || m.data.syncing, onRefresh) {
         item { ScreenTitle("Body", "Every signal, with the story behind it") }
         groups.forEach { (title, metrics) ->
             val shown = metrics.filter { it in available }

@@ -21,6 +21,8 @@ import kotlinx.coroutines.launch
 /** Everything a screen needs: the engine (for series), its computed judgements, and the data state. */
 data class Model(val engine: InsightEngine, val insights: Insights, val data: DataState, val settings: AppSettings)
 
+const val SYNC_AFTER_SEC = 10 * 60L
+
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val baseline = app as BaselineApp
     private val store = baseline.store
@@ -46,6 +48,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             TodayWidget.updateAll(getApplication())
             if (!previewsPublished) { previewsPublished = true; TodayWidget.publishPreviews(getApplication()) }
         }
+    }
+
+    /** Pull from the Zepp cloud through the bridge (when allowed), then refresh. */
+    fun syncNow() = viewModelScope.launch {
+        repo.syncFromCloud()
+        TodayWidget.updateAll(getApplication())
+    }
+
+    /**
+     * Pull-to-refresh: if the bridge hasn't checked the Zepp cloud for a while, sync first; otherwise just
+     * re-read the bridge (cheap, cached).
+     */
+    fun pullToRefresh() {
+        val s = data.value.summary
+        val now = Repository.nowSec()
+        val libraryAge = s?.freshness?.libraryModifiedAt?.let { now - it } ?: Long.MAX_VALUE
+        if (s?.capabilities?.sync == true && libraryAge > SYNC_AFTER_SEC) syncNow() else refresh()
+    }
+
+    /** Set when the user jumps to the Zepp app from here; coming back triggers a cloud sync. */
+    var syncOnReturn = false
+
+    fun onResumed() {
+        if (syncOnReturn) { syncOnReturn = false; syncNow() } else refresh()
     }
 
     fun connect(url: String, token: String) = viewModelScope.launch {

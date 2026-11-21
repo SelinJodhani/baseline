@@ -2,6 +2,8 @@ package app.baseline
 
 import android.content.Intent
 import android.os.Bundle
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -41,6 +43,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         // Coming back to the app is the moment people want fresh numbers.
-        if (vm.settings.value?.onboarded == true) vm.refresh()
+        if (vm.settings.value?.onboarded == true) vm.onResumed()
+        app.baseline.update.Updater.resumePendingInstall(this)
+        lifecycleScope.launch { app.baseline.update.Updater.autoCheck((application as BaselineApp).store) }
     }
 }

@@ -12,6 +12,9 @@ Environment:
   BASELINE_PORT           default 8787
   BASELINE_BIND           default 0.0.0.0
   BASELINE_MAX_DAYS       default 730 (hard cap for ?days=)
+  BASELINE_ALLOW_SYNC     default 1. Lets the app ask for an on-demand Zepp cloud sync
+                          (the same `zeppbridge-cli sync --mode incremental` your timer runs).
+  BASELINE_SYNC_COOLDOWN  default 120 seconds between on-demand syncs
   ZEPPBRIDGE_CLI      default zeppbridge-cli
   ZEPPBRIDGE_DATA_DIR default /data
   TZ                  set it! ZeppBridge files readings under local days.
@@ -35,7 +38,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 SCHEMA = "baseline.v1"
 
 LONG_TYPES = "daily_activity,recovery,pai,sleep,workouts,vo2max,weight,training_load"
@@ -300,6 +303,7 @@ class SummaryCache:
 
     def __init__(self, exporter: Exporter, data_dir: str):
         self.exporter, self.data_dir = exporter, data_dir
+        self.sync_enabled = False
         self.lock = threading.Lock()
         self.entries: dict[int, tuple[str, bytes, bytes]] = {}
 
@@ -328,6 +332,7 @@ class SummaryCache:
             long_doc = export_range(self.exporter, today - dt.timedelta(days=days - 1), today, LONG_TYPES)
             short_doc = self.exporter(short_start, end, SHORT_TYPES)
             summary = build_summary(long_doc, short_doc, start=start, end=end, data_modified=mtime)
+            summary["capabilities"] = {"sync": self.sync_enabled}
             body = json.dumps(summary, separators=(",", ":"), ensure_ascii=False).encode()
             entry = (etag, body, gzip.compress(body, 6))
             self.entries[days] = entry
@@ -336,9 +341,62 @@ class SummaryCache:
             return entry
 
 
+# ----------------------------------------------------------------------- sync
+
+class SyncJob:
+    """One on-demand `zeppbridge-cli sync` at a time, with a cooldown so the app can't hammer Zepp."""
+
+    def __init__(self, enabled: bool, cooldown: int):
+        self.enabled, self.cooldown = enabled, cooldown
+        self.lock = threading.Lock()
+        self.state = "idle"  # idle | running | done | busy | failed
+        self.started_at: int | None = None
+        self.finished_at: int | None = None
+        self.message: str | None = None
+
+    def status(self) -> dict:
+        with self.lock:
+            return {"enabled": self.enabled, "state": self.state, "startedAt": self.started_at,
+                    "finishedAt": self.finished_at, "message": self.message, "cooldownSeconds": self.cooldown}
+
+    def start(self) -> tuple[int, dict | None]:
+        if not self.enabled:
+            return 403, {"error": "on-demand sync is disabled on this bridge (BASELINE_ALLOW_SYNC=0)"}
+        with self.lock:
+            now = int(time.time())
+            if self.state == "running":
+                return 202, None
+            if self.finished_at and now - self.finished_at < self.cooldown:
+                return 200, None
+            self.state, self.started_at, self.message = "running", now, None
+        threading.Thread(target=self._run, daemon=True).start()
+        return 202, None
+
+    def _run(self) -> None:
+        cmd = [os.environ.get("ZEPPBRIDGE_CLI", "zeppbridge-cli"), "sync", "--mode", "incremental", "--json"]
+        state, message = "failed", None
+        try:
+            proc = subprocess.run(cmd, capture_output=True, timeout=900, check=False)
+            if proc.returncode == 0:
+                state = "done"
+            elif proc.returncode == 4:  # another writer (the scheduled timer) holds the lock
+                state, message = "busy", "A scheduled sync is already running"
+            else:
+                message = f"zeppbridge-cli sync exited {proc.returncode}"
+                log.error("sync failed (%d): %s", proc.returncode, proc.stderr.decode("utf-8", "replace")[-300:])
+        except subprocess.TimeoutExpired:
+            message = "Sync took longer than 15 minutes"
+        except OSError as exc:
+            message = f"Couldn't run zeppbridge-cli: {exc}"
+        with self.lock:
+            self.state, self.message, self.finished_at = state, message, int(time.time())
+        log.info("on-demand sync finished: %s %s", state, message or "")
+
+
 # ----------------------------------------------------------------------- http
 
-def make_handler(cache: SummaryCache, token: str, max_days: int):
+def make_handler(cache: SummaryCache, token: str, max_days: int, sync: "SyncJob | None" = None):
+    sync = sync or SyncJob(False, 120)
     token_b = token.encode()
 
     class Handler(BaseHTTPRequestHandler):
@@ -380,7 +438,9 @@ def make_handler(cache: SummaryCache, token: str, max_days: int):
                 return self._send(401, b'{"error":"unauthorized"}',
                                   headers={"WWW-Authenticate": 'Bearer realm="baseline"'})
             if url.path == "/api/v1/ping":
-                return self._send(200, json.dumps({"ok": True, "version": VERSION, "schema": SCHEMA}).encode())
+                return self._send(200, json.dumps({"ok": True, "version": VERSION, "schema": SCHEMA, "sync": sync.enabled}).encode())
+            if url.path == "/api/v1/sync":
+                return self._send(200, json.dumps(sync.status()).encode())
             if url.path != "/api/v1/summary":
                 return self._error(404, "not found")
             try:
@@ -402,6 +462,17 @@ def make_handler(cache: SummaryCache, token: str, max_days: int):
             return self._send(200, body, headers=headers)
 
         do_HEAD = do_GET
+
+        def do_POST(self) -> None:  # noqa: N802
+            url = urlparse(self.path)
+            if not self._authorized():
+                return self._send(401, b'{"error":"unauthorized"}', headers={"WWW-Authenticate": 'Bearer realm="baseline"'})
+            if url.path != "/api/v1/sync":
+                return self._error(404, "not found")
+            code, err = sync.start()
+            if err:
+                return self._send(code, json.dumps(err).encode())
+            return self._send(code, json.dumps(sync.status()).encode())
 
     return Handler
 
@@ -433,8 +504,12 @@ def main() -> int:
     bind = os.environ.get("BASELINE_BIND", "0.0.0.0")
     max_days = int(os.environ.get("BASELINE_MAX_DAYS", "730"))
     cache = SummaryCache(cli_exporter, os.environ.get("ZEPPBRIDGE_DATA_DIR", "/data"))
-    server = ThreadingHTTPServer((bind, port), make_handler(cache, token, max_days))
-    log.info("Baseline Bridge %s listening on %s:%d (TZ=%s)", VERSION, bind, port, os.environ.get("TZ", "unset"))
+    sync = SyncJob(os.environ.get("BASELINE_ALLOW_SYNC", "1") not in ("0", "false", "no"),
+                   int(os.environ.get("BASELINE_SYNC_COOLDOWN", "120")))
+    cache.sync_enabled = sync.enabled
+    server = ThreadingHTTPServer((bind, port), make_handler(cache, token, max_days, sync))
+    log.info("Baseline Bridge %s listening on %s:%d (TZ=%s, on-demand sync %s)", VERSION, bind, port,
+             os.environ.get("TZ", "unset"), "on" if sync.enabled else "off")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

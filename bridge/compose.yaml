@@ -14,6 +14,8 @@ services:
     env_file: .env
     environment:
       TZ: ${TZ:-Etc/UTC}                    # set to YOUR timezone, e.g. Asia/Kolkata
+      ZEPPBRIDGE_CREDENTIAL_STORE: file     # lets "Sync now" in the app run zeppbridge-cli sync
+      # BASELINE_ALLOW_SYNC: "0"            # uncomment to make the bridge strictly read-only
     volumes:
       - ${ZEPPBRIDGE_DATA:-./data}:/data    # the same folder ZeppBridge syncs into
     ports:

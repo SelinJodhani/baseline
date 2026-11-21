@@ -142,10 +142,13 @@ private fun Main(vm: AppViewModel) {
                         val openMetric: (Metric) -> Unit = { story = it }
                         AnimatedContent(tab, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "tab") { t ->
                             when (t) {
-                                0 -> TodayScreen(m, onRefresh = { vm.refresh() }, onSettings = openSettings, onMetric = openMetric, onTab = { tab = it })
-                                1 -> SleepScreen(m, onRefresh = { vm.refresh() }, onMetric = openMetric)
-                                2 -> BodyScreen(m, onRefresh = { vm.refresh() }, onMetric = openMetric)
-                                else -> ActivityScreen(m, onRefresh = { vm.refresh() }, onMetric = openMetric)
+                                0 -> TodayScreen(
+                                    m, onRefresh = { vm.pullToRefresh() }, onSettings = openSettings, onMetric = openMetric, onTab = { tab = it },
+                                    onSync = { vm.syncNow() }, onOpenZepp = { vm.syncOnReturn = true },
+                                )
+                                1 -> SleepScreen(m, onRefresh = { vm.pullToRefresh() }, onMetric = openMetric)
+                                2 -> BodyScreen(m, onRefresh = { vm.pullToRefresh() }, onMetric = openMetric)
+                                else -> ActivityScreen(m, onRefresh = { vm.pullToRefresh() }, onMetric = openMetric)
                             }
                         }
                     }

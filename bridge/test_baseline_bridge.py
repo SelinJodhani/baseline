@@ -66,6 +66,40 @@ class TransformTest(unittest.TestCase):
         self.assertEqual(self.s["freshness"]["lastReadingAt"], sl["end"])
 
 
+class SyncTest(unittest.TestCase):
+    def _job(self, exit_code, cooldown=0):
+        d = tempfile.mkdtemp()
+        script = os.path.join(d, "fake-cli")
+        with open(script, "w") as f:
+            f.write(f"#!/bin/sh\necho '{{}}'\nexit {exit_code}\n")
+        os.chmod(script, 0o755)
+        os.environ["ZEPPBRIDGE_CLI"] = script
+        return b.SyncJob(True, cooldown)
+
+    def _wait(self, job):
+        import time
+        for _ in range(100):
+            if job.status()["state"] != "running":
+                return job.status()
+            time.sleep(0.02)
+        self.fail("sync never finished")
+
+    def tearDown(self):
+        os.environ.pop("ZEPPBRIDGE_CLI", None)
+
+    def test_success_busy_failure(self):
+        for code, state in ((0, "done"), (4, "busy"), (1, "failed")):
+            job = self._job(code)
+            self.assertEqual(job.start()[0], 202)
+            self.assertEqual(self._wait(job)["state"], state)
+
+    def test_cooldown_and_disabled(self):
+        job = self._job(0, cooldown=600)
+        job.start(); self._wait(job)
+        self.assertEqual(job.start()[0], 200)          # within cooldown: just status
+        self.assertEqual(b.SyncJob(False, 0).start()[0], 403)
+
+
 class ChunkTest(unittest.TestCase):
     def test_long_ranges_are_chunked(self):
         import datetime as dt

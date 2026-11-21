@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -25,6 +26,12 @@ data class DataState(
     val error: String? = null,
     /** When this device last got a fresh copy from the bridge (epoch seconds). */
     val fetchedAt: Long? = null,
+    /** The bridge is pulling from the Zepp cloud right now. */
+    val syncing: Boolean = false,
+    /** Outcome of the last on-demand sync, worded for people (null = nothing to say). */
+    val syncNote: String? = null,
+    /** When the last on-demand sync finished (epoch seconds). */
+    val syncedAt: Long? = null,
 )
 
 class BridgeException(message: String) : IOException(message)
@@ -62,12 +69,78 @@ class Repository(private val context: Context, private val store: SecureStore) {
         val fetched = result.getOrNull()
         _state.update { s ->
             when {
-                fetched?.summary != null -> DataState(summary = fetched.summary, source = Source.Live, fetchedAt = nowSec())
-                fetched != null -> s.copy(source = Source.Live, refreshing = false, fetchedAt = nowSec()) // 304
+                fetched?.summary != null -> s.copy(summary = fetched.summary, source = Source.Live, fetchedAt = nowSec(), refreshing = false, error = null)
+                fetched != null -> s.copy(source = Source.Live, refreshing = false, fetchedAt = nowSec(), error = null) // 304
                 else -> s.copy(refreshing = false, error = error)
             }
         }
         error
+    }
+
+    @Serializable
+    private data class SyncStatus(val enabled: Boolean = false, val state: String = "idle", val finishedAt: Long? = null, val message: String? = null)
+
+    /**
+     * Ask the bridge to pull from the Zepp cloud, wait for it, then refresh. The watch only reaches the Zepp cloud
+     * through the Zepp phone app, so "no new data" is common and gets a note telling people to open Zepp first.
+     */
+    suspend fun syncFromCloud(): String? {
+        val settings = store.settings.first()
+        if (settings.demo || settings.serverUrl.isBlank()) return refresh()
+        if (_state.value.syncing) return null
+        val before = _state.value.summary?.freshness?.lastReadingAt
+        _state.update { it.copy(syncing = true, syncNote = null, error = null) }
+        val outcome = runCatching {
+            withContext(Dispatchers.IO) {
+                post("${settings.serverUrl.trimEnd('/')}/api/v1/sync", settings.token)
+                var st: SyncStatus
+                val deadline = System.currentTimeMillis() + 15 * 60_000
+                do {
+                    kotlinx.coroutines.delay(2_000)
+                    st = getJson("${settings.serverUrl.trimEnd('/')}/api/v1/sync", settings.token, SyncStatus.serializer())
+                } while (st.state == "running" && System.currentTimeMillis() < deadline)
+                st
+            }
+        }
+        val st = outcome.getOrNull()
+        val err = outcome.exceptionOrNull()?.let { friendly(it) }
+        val refreshError = if (err == null) refresh() else null
+        val after = _state.value.summary?.freshness?.lastReadingAt
+        val note = when {
+            err != null -> err
+            refreshError != null -> refreshError
+            st?.state == "failed" -> "Zepp cloud sync failed — ${st.message ?: "check the bridge logs"}"
+            st?.state == "busy" -> "A scheduled sync was already running — your data is up to date with it"
+            after != null && before != null && after <= before -> "No new readings in the Zepp cloud yet. Open the Zepp app so your watch syncs, then try again."
+            else -> null
+        }
+        _state.update { it.copy(syncing = false, syncNote = note, syncedAt = nowSec()) }
+        return note
+    }
+
+    private fun post(url: String, token: String) {
+        val conn = openConnection(url, token).apply { requestMethod = "POST"; doOutput = true; setFixedLengthStreamingMode(0) }
+        try {
+            when (val code = conn.responseCode) {
+                200, 202 -> Unit
+                401 -> throw BridgeException("The bridge rejected the token")
+                403 -> throw BridgeException("Cloud sync is turned off on this bridge")
+                404 -> throw BridgeException("This bridge is too old for cloud sync — update it")
+                else -> throw BridgeException("The bridge answered HTTP $code")
+            }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun <T> getJson(url: String, token: String, serializer: kotlinx.serialization.KSerializer<T>): T {
+        val conn = openConnection(url, token)
+        try {
+            if (conn.responseCode != 200) throw BridgeException("The bridge answered HTTP ${conn.responseCode}")
+            return Summary.json.decodeFromString(serializer, conn.inputStream.use { it.readBytes().decodeToString() })
+        } finally {
+            conn.disconnect()
+        }
     }
 
     fun clear() {

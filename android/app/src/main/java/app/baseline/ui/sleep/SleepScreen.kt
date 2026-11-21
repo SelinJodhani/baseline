@@ -46,7 +46,7 @@ fun SleepScreen(m: Model, onRefresh: () -> Unit, onMetric: (Metric) -> Unit) {
     val e = m.engine
     val mains = e.mainSleeps
 
-    RefreshablePage(m.data.refreshing, onRefresh) {
+    RefreshablePage(m.data.refreshing || m.data.syncing, onRefresh) {
         item { ScreenTitle("Sleep", s.last?.let { "Night ending ${Fmt.fullDate(Instant.ofEpochSecond(it.end).atZone(zone).toLocalDate())}" } ?: "No recent night") }
 
         item {

@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RefreshablePage(refreshing: Boolean, onRefresh: () -> Unit, content: LazyListScope.() -> Unit) {
+    // (callers pass data.refreshing || data.syncing)
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     PullToRefreshBox(isRefreshing = refreshing, onRefresh = onRefresh, modifier = Modifier.fillMaxSize()) {
         LazyColumn(

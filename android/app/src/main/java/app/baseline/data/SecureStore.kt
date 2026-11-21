@@ -37,6 +37,8 @@ data class AppSettings(
     val aiEnabled: Boolean = false,
     val geminiKey: String = "",
     val geminiModel: String = "gemini-3.5-flash-lite",
+    val lastUpdateCheck: Long = 0,
+    val skippedVersion: String = "",
 )
 
 /**

@@ -24,6 +24,8 @@ Then it gives you **one thing to do today**.
 - **A story for every metric:** your personal takeaway, an interactive trend with your normal range, *why it matters*, *what to look for* and *how to improve*. Each story is based on the research in [docs/RESEARCH.md](docs/RESEARCH.md).
 - **Body:** every signal in one quiet list. HRV, resting HR, breathing, sleep rhythm, night oxygen, VO₂max, steps, load, stress and weight.
 - **Widgets:** Today, Readiness, Sleep and Move for the home screen and, where supported, the lock screen. Add them in one tap from Settings.
+- **Fresh data on demand:** if your data is stale, Today tells you why: the watch syncs to the Zepp cloud only through the Zepp app. One tap opens Zepp, and **Sync now** pulls the cloud right away.
+- **Built-in updates:** new versions install from GitHub Releases, checksum-verified.
 - **Optional AI brief:** a three-sentence morning brief from Google Gemini, using your own key. Only a text digest of the numbers on Today is sent.
 - **Material You:** follows your wallpaper colours, with light and dark themes and no gradients.
 - **Private by design:** no accounts, analytics or cloud. The token is encrypted with the Android Keystore, and nothing goes into backups.
@@ -46,7 +48,7 @@ Amazfit ─► Zepp app ─► Zepp cloud ─► ZeppBridge (your server, SQLite
 ```
 
 - **[ZeppBridge](https://github.com/lingcang728/ZeppBridge)** pulls your full Zepp history into a local library.
-- **[Baseline Bridge](bridge/)** is one stdlib-only Python file in a container. It turns that library into a compact JSON feed, protected by a token.
+- **[Baseline Bridge](bridge/)** is one stdlib-only Python file in a container. It turns that library into a compact JSON feed, protected by a token, and can trigger a ZeppBridge sync when you tap Sync now.
 - **The app** does all the analysis on your phone. See [docs/METRICS.md](docs/METRICS.md) for every formula.
 
 ## Get started

@@ -24,11 +24,15 @@ data class Summary(
     val hourly: Hourly = Hourly(),
     val workouts: List<Workout> = emptyList(),
     val weights: List<Weight> = emptyList(),
+    val capabilities: Capabilities = Capabilities(),
 ) {
     companion object {
         val json = Json { ignoreUnknownKeys = true; explicitNulls = false; coerceInputValues = true }
     }
 }
+
+@Serializable
+data class Capabilities(val sync: Boolean = false)
 
 @Serializable
 data class Freshness(val lastReadingAt: Long? = null, val libraryModifiedAt: Long? = null)

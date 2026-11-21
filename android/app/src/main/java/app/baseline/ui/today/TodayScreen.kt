@@ -32,6 +32,9 @@ import androidx.compose.material.icons.rounded.Sick
 import androidx.compose.material.icons.rounded.Spa
 import androidx.compose.material.icons.rounded.Timelapse
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Button
+import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -75,9 +78,15 @@ import kotlinx.coroutines.launch
 import java.time.ZonedDateTime
 
 @Composable
-fun TodayScreen(m: Model, onRefresh: () -> Unit, onSettings: () -> Unit, onMetric: (Metric) -> Unit, onTab: (Int) -> Unit) {
-    RefreshablePage(m.data.refreshing, onRefresh) {
+fun TodayScreen(
+    m: Model, onRefresh: () -> Unit, onSettings: () -> Unit, onMetric: (Metric) -> Unit, onTab: (Int) -> Unit,
+    onSync: () -> Unit = {}, onOpenZepp: () -> Unit = {},
+) {
+    val fresh = freshnessOf(m)
+    RefreshablePage(m.data.refreshing || m.data.syncing, onRefresh) {
         item { Header(m, onSettings) }
+        if (fresh.showCard) item { FreshnessCard(m, fresh, onSync, onOpenZepp) }
+        item { app.baseline.update.UpdateBanner() }
         item { Hero(m, onMetric) }
         if (m.settings.aiEnabled && m.settings.geminiKey.isNotBlank()) item { BriefCard(m) }
         item {
@@ -282,13 +291,91 @@ private fun Signals(m: Model, onMetric: (Metric) -> Unit) {
     }
 }
 
+/** How current the data is, and whether a manual cloud sync makes sense right now. */
+private data class FreshnessInfo(
+    val readingAgeMin: Long?,
+    val cloudCheckAgeMin: Long?,
+    val stale: Boolean,
+    val canSync: Boolean,
+    val showCard: Boolean,
+)
+
+private const val STALE_AFTER_MIN = 90L
+
+private fun freshnessOf(m: Model): FreshnessInfo {
+    val s = m.data.summary
+    val now = System.currentTimeMillis() / 1000
+    val readingAge = s?.freshness?.lastReadingAt?.let { (now - it) / 60 }
+    val checked = listOfNotNull(s?.freshness?.libraryModifiedAt, m.data.syncedAt).maxOrNull()
+    val checkAge = checked?.let { (now - it) / 60 }
+    val live = m.data.source == Source.Live || m.data.source == Source.Cached
+    val stale = live && (readingAge == null || readingAge > STALE_AFTER_MIN)
+    val canSync = live && s?.capabilities?.sync == true && !m.data.syncing &&
+        (checkAge == null || checkAge * 60 >= app.baseline.SYNC_AFTER_SEC)
+    return FreshnessInfo(readingAge, checkAge, stale, canSync, showCard = stale || m.data.syncing || m.data.syncNote != null)
+}
+
+private fun ageText(min: Long?): String = when {
+    min == null -> "never"
+    min < 2 -> "just now"
+    min < 60 -> "$min min ago"
+    min < 48 * 60 -> "${min / 60} h ago"
+    else -> "${min / 1440} days ago"
+}
+
+/** Package names of the Zepp phone apps (global Zepp, and Zepp Life). */
+private val ZEPP_PACKAGES = listOf("com.huami.watch.hmwatchmanager", "com.xiaomi.hm.health")
+
+@Composable
+private fun FreshnessCard(m: Model, f: FreshnessInfo, onSync: () -> Unit, onOpenZepp: () -> Unit) {
+    val ctx = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    val zeppIntent = remember { ZEPP_PACKAGES.firstNotNullOfOrNull { ctx.packageManager.getLaunchIntentForPackage(it) } }
+    Surface(shape = RoundedCornerShape(28.dp), color = cs.surfaceContainerHigh) {
+        Column(Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (m.data.syncing) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                else Icon(Icons.Rounded.Sync, null, tint = cs.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    when {
+                        m.data.syncing -> "Pulling from the Zepp cloud…"
+                        f.stale -> "Last watch reading ${ageText(f.readingAgeMin)}"
+                        else -> "Up to date"
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                m.data.syncNote ?: "Your watch reaches the Zepp cloud only through the Zepp app on your phone. Open Zepp and let it sync, then pull the latest here.",
+                style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant,
+            )
+            if (!m.data.syncing) {
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (zeppIntent != null) {
+                        OutlinedButton(onClick = { onOpenZepp(); ctx.startActivity(zeppIntent) }) { Text("Open Zepp") }
+                        Spacer(Modifier.width(10.dp))
+                    }
+                    if (f.canSync) {
+                        Button(onClick = onSync) { Text("Sync now") }
+                    } else if (m.data.summary?.capabilities?.sync == true) {
+                        Text("Zepp cloud checked ${ageText(f.cloudCheckAgeMin)}", style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun Freshness(m: Model) {
     val s = m.data.summary ?: return
     val text = when {
         m.data.source == Source.Demo -> "Demo data · a fictional person"
         m.data.error != null -> "Offline · showing your last copy · ${m.data.error}"
-        else -> "Latest reading ${Fmt.ago(s.freshness.lastReadingAt)} · synced ${Fmt.ago(s.freshness.libraryModifiedAt)}"
+        else -> "Latest reading ${Fmt.ago(s.freshness.lastReadingAt)} · Zepp cloud checked ${Fmt.ago(listOfNotNull(s.freshness.libraryModifiedAt, m.data.syncedAt).maxOrNull())}"
     }
     Text(text, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp))
 }
