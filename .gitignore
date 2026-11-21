@@ -1,0 +1,21 @@
+# Android / Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/keystore.properties
+android/.kotlin/
+*.jks
+*.keystore
+*.apk
+*.aab
+.idea/
+*.iml
+.DS_Store
+# Python
+__pycache__/
+*.pyc
+# Never commit real data or secrets
+bridge/.env
+bridge/data/
+*.export.json

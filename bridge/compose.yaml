@@ -1,0 +1,26 @@
+# Example: run next to ZeppBridge on the same host.
+# 1. echo "OJAS_TOKEN=$(openssl rand -base64 32)" > .env && chmod 600 .env
+# 2. docker compose up -d --build
+services:
+  ojas-bridge:
+    build:
+      context: .
+      args:
+        ZEPPBRIDGE_IMAGE: zeppbridge:local   # the image you sync with
+    image: ojas-bridge:local
+    container_name: ojas-bridge
+    restart: unless-stopped
+    user: "${ZEPPBRIDGE_UID:-1000}:${ZEPPBRIDGE_GID:-1000}"
+    env_file: .env
+    environment:
+      TZ: ${TZ:-Etc/UTC}                    # set to YOUR timezone, e.g. Asia/Kolkata
+    volumes:
+      - ${ZEPPBRIDGE_DATA:-./data}:/data    # the same folder ZeppBridge syncs into
+    ports:
+      # Bind to localhost and put Tailscale / a TLS reverse proxy in front.
+      # Never expose this port to the open internet without TLS.
+      - "127.0.0.1:8787:8787"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]

@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Ojas</string>
+    <string name="widget_today">Ojas · Today</string>
+    <string name="widget_today_description">Readiness, last night\'s sleep and today\'s steps</string>
+</resources>

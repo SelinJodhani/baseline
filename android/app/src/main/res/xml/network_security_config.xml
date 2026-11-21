@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- HTTPS is the default and what the setup guide recommends (Tailscale Serve or a TLS reverse proxy).
+     Plain http is allowed only so a bridge on a tailnet IP (100.x, already WireGuard-encrypted) or a
+     LAN address can work; the app warns when a server URL is http and not on a private network. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

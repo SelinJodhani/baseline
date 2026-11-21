@@ -1,0 +1,98 @@
+package app.ojas.data
+
+import android.content.Context
+import androidx.datastore.core.CorruptionException
+import androidx.datastore.core.DataStore
+import androidx.datastore.core.DataStoreFactory
+import androidx.datastore.core.Serializer
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
+import com.google.crypto.tink.Aead
+import com.google.crypto.tink.KeyTemplates
+import com.google.crypto.tink.RegistryConfiguration
+import com.google.crypto.tink.aead.AeadConfig
+import com.google.crypto.tink.integration.android.AndroidKeysetManager
+import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
+import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
+
+@Serializable
+data class AppSettings(
+    val serverUrl: String = "",
+    val token: String = "",
+    val demo: Boolean = false,
+    val onboarded: Boolean = false,
+    /** Personal sleep need in minutes (default 8 h; adults need 7–9 h). */
+    val sleepNeedMin: Int = 480,
+    /** Daily step target. Mortality benefit plateaus around 7–10k steps/day for adults. */
+    val stepGoal: Int = 8000,
+    /** Weekly moderate-to-vigorous minutes target (WHO: 150–300). */
+    val weeklyActiveGoal: Int = 150,
+    val theme: String = "system",
+    val dynamicColor: Boolean = true,
+)
+
+/**
+ * Settings (including the bridge token) in one DataStore file encrypted with AES-256-GCM; the key lives in
+ * the Android Keystore, so the file is useless off this device. Excluded from backups.
+ */
+class SecureStore(context: Context) {
+    private val aead: Aead = run {
+        AeadConfig.register()
+        fun build() = AndroidKeysetManager.Builder()
+            .withSharedPref(context, "ojas_keyset", "ojas_keyset_prefs")
+            .withKeyTemplate(KeyTemplates.get("AES256_GCM"))
+            .withMasterKeyUri("android-keystore://ojas_master_key")
+            .build()
+            .keysetHandle
+            .getPrimitive(RegistryConfiguration.get(), Aead::class.java)
+        try {
+            build()
+        } catch (e: Exception) {
+            // Keystore key lost (e.g. after a lock-screen reset): start fresh instead of crashing every launch.
+            context.getSharedPreferences("ojas_keyset_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+            runCatching {
+                java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry("ojas_master_key")
+            }
+            File(context.filesDir, "datastore/settings.enc").delete()
+            build()
+        }
+    }
+
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val associated = "ojas-settings-v1".toByteArray()
+
+    private val serializer = object : Serializer<AppSettings> {
+        override val defaultValue = AppSettings()
+        override suspend fun readFrom(input: InputStream): AppSettings {
+            val bytes = input.readBytes()
+            if (bytes.isEmpty()) return defaultValue
+            return try {
+                json.decodeFromString(AppSettings.serializer(), aead.decrypt(bytes, associated).decodeToString())
+            } catch (e: SerializationException) {
+                throw CorruptionException("Unreadable settings", e)
+            } catch (e: java.security.GeneralSecurityException) {
+                throw CorruptionException("Settings can't be decrypted", e)
+            }
+        }
+
+        override suspend fun writeTo(t: AppSettings, output: OutputStream) {
+            output.write(aead.encrypt(json.encodeToString(AppSettings.serializer(), t).toByteArray(), associated))
+        }
+    }
+
+    private val store: DataStore<AppSettings> = DataStoreFactory.create(
+        serializer = serializer,
+        corruptionHandler = ReplaceFileCorruptionHandler { AppSettings() },
+        produceFile = { File(context.filesDir, "datastore/settings.enc") },
+    )
+
+    val settings: Flow<AppSettings> = store.data
+
+    suspend fun update(transform: (AppSettings) -> AppSettings) {
+        store.updateData(transform)
+    }
+}
