@@ -60,6 +60,8 @@ class TodayPillWidget : BaselineWidget(setOf(DpSize(260.dp, 56.dp), DpSize(340.d
     @Composable
     private fun Strip(context: Context, i: Insights, look: Look, width: androidx.compose.ui.unit.Dp, pillH: androidx.compose.ui.unit.Dp) {
         val roomy = width >= 280.dp
+        // Focus needs ~90dp to read; numbers take more room than dots, so it appears later with numbers on.
+        val showFocus = width >= (if (look.numbers) 310.dp else 250.dp)
         val chipH = (pillH - 14.dp).coerceIn(26.dp, 40.dp)
         Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             // Verb chip
@@ -73,7 +75,7 @@ class TodayPillWidget : BaselineWidget(setOf(DpSize(260.dp, 56.dp), DpSize(340.d
                 }
             }
             HSpace(10.dp)
-            if (roomy) {
+            if (showFocus) {
                 T(i.focus.title, 13.sp, WC.onSurface, FontWeight.Medium, modifier = GlanceModifier.defaultWeight())
                 HSpace(10.dp)
             } else Spacer(GlanceModifier.defaultWeight())

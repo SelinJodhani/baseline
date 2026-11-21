@@ -116,11 +116,14 @@ class SleepWidget : BaselineWidget(setOf(DpSize(150.dp, 170.dp), DpSize(300.dp, 
     @Composable
     private fun Hero(i: Insights, look: Look, sizeSp: Float) {
         val s = i.sleep
-        if (look.numbers) {
-            T(WidgetWords.duration(s.asleepMin), sizeSp.sp, WC.onA3Container, FontWeight.Bold)
-            T("of ${WidgetWords.durationShort(s.needMin)} need", 12.sp, WC.onA3ContainerVar)
-        } else {
-            T(WidgetWords.sleep(s.level, s.asleepMin), (sizeSp - 4f).sp, WC.onA3Container, FontWeight.Bold)
+        // One child for the parent column (Glance containers hold at most 10 children).
+        Column {
+            if (look.numbers) {
+                T(WidgetWords.duration(s.asleepMin), sizeSp.sp, WC.onA3Container, FontWeight.Bold)
+                T("of ${WidgetWords.durationShort(s.needMin)} need", 12.sp, WC.onA3ContainerVar)
+            } else {
+                T(WidgetWords.sleep(s.level, s.asleepMin), (sizeSp - 4f).sp, WC.onA3Container, FontWeight.Bold)
+            }
         }
     }
 

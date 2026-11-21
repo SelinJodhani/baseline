@@ -8,7 +8,7 @@
     <!-- Secondary text on surfaces -->
     <color name="w_on_surface_var">#FFC0C9C3</color>
     <!-- Progress track on surfaces -->
-    <color name="w_track">#FF2B322F</color>
+    <color name="w_track">#FF414945</color>
     <!-- Chip fill on surfaces -->
     <color name="w_chip">#FF344C44</color>
     <!-- Text on chips -->

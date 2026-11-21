@@ -75,7 +75,7 @@ class TodayWidget : BaselineWidget(setOf(DpSize(300.dp, 150.dp), DpSize(300.dp, 
             }
             val w = size.width - pad * 2
             val h = size.height - pad * 2
-            if (h >= 170.dp) Large(context, state, i, look, w, h) else Medium(context, state, i, look, w, h)
+            if (h >= 180.dp) Large(context, state, i, look, w, h) else Medium(context, state, i, look, w, h)
         }
     }
 
@@ -83,7 +83,7 @@ class TodayWidget : BaselineWidget(setOf(DpSize(300.dp, 150.dp), DpSize(300.dp, 
 
     @Composable
     private fun Large(context: Context, state: WidgetState, i: Insights, look: Look, w: Dp, h: Dp) {
-        val ring = minOf(108.dp, h * 0.48f, w * 0.36f)
+        val ring = minOf(108.dp, h - 100.dp, w * 0.36f)
         Column(GlanceModifier.fillMaxSize()) {
             Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 ReadinessRing(context, i, look, ring)

@@ -8,7 +8,7 @@
     <!-- Secondary text on surfaces -->
     <color name="w_on_surface_var">@android:color/system_neutral2_200</color>
     <!-- Progress track on surfaces -->
-    <color name="w_track">@android:color/system_neutral2_800</color>
+    <color name="w_track">@android:color/system_neutral2_700</color>
     <!-- Chip fill on surfaces -->
     <color name="w_chip">@android:color/system_accent2_700</color>
     <!-- Text on chips -->
