@@ -179,10 +179,11 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
             item {
                 var key by remember(s.geminiKey) { mutableStateOf(s.geminiKey) }
                 var model by remember(s.geminiModel) { mutableStateOf(s.geminiModel) }
+                var docModel by remember(s.geminiDocModel) { mutableStateOf(s.geminiDocModel) }
                 SectionCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("AI brief", style = MaterialTheme.typography.titleMedium)
+                            Text("AI", style = MaterialTheme.typography.titleMedium)
                             Text("Optional · Google Gemini, your own key", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Switch(checked = s.aiEnabled, onCheckedChange = { c -> vm.update { it.copy(aiEnabled = c) } })
@@ -196,18 +197,20 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                         Spacer(Modifier.height(8.dp))
                         OutlinedTextField(value = model, onValueChange = { model = it }, label = { Text("Model") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                         Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(value = docModel, onValueChange = { docModel = it }, label = { Text("Model for reading reports") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(8.dp))
                         Row {
                             TextButton(onClick = { open("https://aistudio.google.com/apikey") }) { Text("Get a free key") }
                             Spacer(Modifier.weight(1f))
                             FilledTonalButton(
-                                onClick = { vm.update { it.copy(geminiKey = key.trim(), geminiModel = model.trim().ifBlank { "gemini-3.5-flash-lite" }) }; app.baseline.ai.BriefService.clear(ctx) },
-                                enabled = key.trim() != s.geminiKey || model.trim() != s.geminiModel,
+                                onClick = { vm.update { it.copy(geminiKey = key.trim(), geminiModel = model.trim().ifBlank { "gemini-3.5-flash-lite" }, geminiDocModel = docModel.trim().ifBlank { "gemini-3.6-flash" }) }; app.baseline.ai.BriefService.clear(ctx); app.baseline.ai.MetricExplainer.clear(ctx) },
+                                enabled = key.trim() != s.geminiKey || model.trim() != s.geminiModel || docModel.trim() != s.geminiDocModel,
                             ) { Text("Save") }
                         }
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "When on, once a day Baseline sends Gemini a short text summary of the numbers you see on Today (scores, averages, targets) — never raw readings, times or anything that identifies you — and shows a three-sentence brief. Google's API terms apply to that text.",
+                        "When on, once a day Baseline sends Gemini a short text summary of the numbers you see on Today (scores, averages, targets) — never raw readings, times or anything that identifies you — and shows a three-sentence brief. Explanations on metric pages and lab results are sent only when you tap them. A lab report or InBody sheet you upload is sent once to read its values; only the values are kept, encrypted on this phone. Google's API terms apply to what is sent.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

@@ -46,10 +46,11 @@ private val groups = listOf(
 )
 
 @Composable
-fun BodyScreen(m: Model, onRefresh: () -> Unit, onMetric: (Metric) -> Unit) {
+fun BodyScreen(m: Model, onRefresh: () -> Unit, onMetric: (Metric) -> Unit, onLabs: () -> Unit = {}, onBodyComp: () -> Unit = {}) {
     val available = remember(m) { Metric.entries.filter { hasData(m, it) }.toSet() }
     RefreshablePage(m.data.refreshing || m.data.syncing, onRefresh) {
         item { ScreenTitle("Body", "Every signal, with the story behind it") }
+        item { app.baseline.labs.ui.LabsEntries(onLabs, onBodyComp) }
         groups.forEach { (title, metrics) ->
             val shown = metrics.filter { it in available }
             if (shown.isEmpty()) return@forEach

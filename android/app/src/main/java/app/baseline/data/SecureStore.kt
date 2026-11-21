@@ -43,6 +43,8 @@ data class AppSettings(
     val calmMode: Boolean = false,
     /** Keep last night's sleep details off Today until noon, so the morning isn't judged by a number. */
     val holdSleepScoreUntilAfternoon: Boolean = false,
+    /** Gemini model used to read lab reports and InBody sheets (needs PDF / image input). */
+    val geminiDocModel: String = "gemini-3.6-flash",
 )
 
 /**
