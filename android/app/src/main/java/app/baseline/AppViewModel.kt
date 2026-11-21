@@ -4,6 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.baseline.data.AppSettings
+import app.baseline.data.Archive
+import app.baseline.data.ExportException
+import app.baseline.data.ZeppExport
 import app.baseline.data.DataState
 import app.baseline.data.Repository
 import app.baseline.insight.InsightEngine
@@ -105,6 +108,49 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun pair(url: String, token: String) { pairing.value = url to token }
 
     fun update(transform: (AppSettings) -> AppSettings) = viewModelScope.launch { store.update(transform) }
+
+    /** Imported older-account history (Zepp export), or null. */
+    val archive: StateFlow<Archive?> = repo.archive
+
+    sealed interface ImportState {
+        data object Running : ImportState
+        data class Done(val message: String) : ImportState
+        data class Failed(val message: String) : ImportState
+    }
+    val importState = kotlinx.coroutines.flow.MutableStateFlow<ImportState?>(null)
+
+    /** Read a Zepp "Export data" zip on this phone and merge it under the bridge's data. */
+    fun importZeppExport(uri: android.net.Uri, password: String) = viewModelScope.launch {
+        importState.value = ImportState.Running
+        val ctx = getApplication<Application>()
+        val result = runCatching {
+            kotlinx.coroutines.withContext(Dispatchers.IO) {
+                val input = ctx.contentResolver.openInputStream(uri) ?: throw ExportException("Couldn't open that file")
+                input.use { ZeppExport.read(it, password, java.time.ZoneId.systemDefault()) }
+            }
+        }
+        result.onSuccess { a ->
+            if (a.days.isEmpty() && a.sleeps.isEmpty()) {
+                importState.value = ImportState.Failed("No days or nights found in that export")
+                return@launch
+            }
+            repo.saveArchive(a)
+            TodayWidget.updateAll(ctx)
+            importState.value = ImportState.Done(
+                "Imported ${a.days.size} days, ${a.sleeps.size} nights and ${a.workouts.size} workouts (${a.from} → ${a.to})",
+            )
+        }.onFailure { e ->
+            importState.value = ImportState.Failed(
+                (e as? ExportException)?.message ?: "Couldn't read that export: ${e.message ?: e.javaClass.simpleName}",
+            )
+        }
+    }
+
+    fun removeImported() = viewModelScope.launch {
+        repo.removeArchive()
+        importState.value = null
+        TodayWidget.updateAll(getApplication())
+    }
 
     suspend fun test(url: String, token: String): String? = Repository.testConnection(url.trim(), token.trim())
 }

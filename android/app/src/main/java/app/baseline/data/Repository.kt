@@ -44,6 +44,47 @@ class Repository(private val context: Context, private val store: SecureStore) {
 
     private val cacheFile get() = File(context.filesDir, "cache/summary.json")
     private val metaFile get() = File(context.filesDir, "cache/summary.meta")
+    private val archiveFile get() = File(context.filesDir, "archive/zepp-export.json")
+
+    private val _archive = MutableStateFlow<Archive?>(null)
+    /** History imported from a Zepp export (older account), merged under the bridge's data. */
+    val archive: StateFlow<Archive?> = _archive.asStateFlow()
+    @Volatile private var archiveLoaded = false
+
+    /** Call off the main thread. */
+    private fun loadArchive() {
+        if (archiveLoaded) return
+        _archive.value = runCatching { Summary.json.decodeFromString(Archive.serializer(), archiveFile.readText()) }.getOrNull()
+        archiveLoaded = true
+    }
+
+    private fun merged(s: Summary): Summary = s.withArchive(_archive.value)
+
+    /** Save imported history and re-merge it into what's on screen. */
+    suspend fun saveArchive(a: Archive) = mutex.withLock {
+        withContext(Dispatchers.IO) {
+            archiveFile.parentFile?.mkdirs()
+            val tmp = File(archiveFile.path + ".tmp")
+            tmp.writeText(Summary.json.encodeToString(Archive.serializer(), a))
+            tmp.renameTo(archiveFile)
+            _archive.value = a; archiveLoaded = true
+            remerge()
+        }
+    }
+
+    suspend fun removeArchive() = mutex.withLock {
+        withContext(Dispatchers.IO) {
+            archiveFile.delete()
+            _archive.value = null; archiveLoaded = true
+            remerge()
+        }
+    }
+
+    private fun remerge() {
+        if (_state.value.source == Source.Demo) return
+        val raw = readCache()?.first ?: return
+        _state.update { it.copy(summary = merged(raw)) }
+    }
 
     suspend fun loadInitial() {
         val settings = store.settings.first()
@@ -51,8 +92,8 @@ class Repository(private val context: Context, private val store: SecureStore) {
             _state.value = DataState(summary = DemoData.generate(), source = Source.Demo, fetchedAt = nowSec())
             return
         }
-        val cached = withContext(Dispatchers.IO) { readCache() }
-        if (cached != null) _state.value = DataState(summary = cached.first, source = Source.Cached, fetchedAt = cached.second)
+        val cached = withContext(Dispatchers.IO) { loadArchive(); readCache() }
+        if (cached != null) _state.value = DataState(summary = merged(cached.first), source = Source.Cached, fetchedAt = cached.second)
     }
 
     /** Pull a fresh copy. Returns null on success, or a human-readable error. */
@@ -64,7 +105,10 @@ class Repository(private val context: Context, private val store: SecureStore) {
         }
         if (settings.serverUrl.isBlank()) return "No server configured"
         _state.update { it.copy(refreshing = true, error = null) }
-        val result = runCatching { withContext(Dispatchers.IO) { fetch(settings.serverUrl, settings.token, useEtag = _state.value.summary != null) } }
+        val result = runCatching { withContext(Dispatchers.IO) {
+            loadArchive()
+            fetch(settings.serverUrl, settings.token, useEtag = _state.value.summary != null).let { f -> f.summary?.let { Fetched(merged(it)) } ?: f }
+        } }
         val error = result.exceptionOrNull()?.let { friendly(it) }
         val fetched = result.getOrNull()
         _state.update { s ->
@@ -144,7 +188,8 @@ class Repository(private val context: Context, private val store: SecureStore) {
     }
 
     fun clear() {
-        cacheFile.delete(); metaFile.delete()
+        cacheFile.delete(); metaFile.delete(); archiveFile.delete()
+        _archive.value = null; archiveLoaded = true
         _state.value = DataState()
     }
 

@@ -91,6 +91,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.tink.android)
+    implementation(libs.zip4j)
 
     implementation(libs.glance.appwidget)
     implementation(libs.glance.material3)

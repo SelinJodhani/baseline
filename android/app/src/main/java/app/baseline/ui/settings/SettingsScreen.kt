@@ -104,6 +104,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                     }
                 }
             }
+            if (!s.demo) item { SectionCard { ImportCard(vm) } }
             item {
                 SectionCard {
                     Text("Your targets", style = MaterialTheme.typography.titleMedium)
@@ -217,7 +218,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
         AlertDialog(
             onDismissRequest = { confirmSignOut = false },
             title = { Text(if (s.demo) "Leave demo mode?" else "Disconnect?") },
-            text = { Text("This removes the server address, token and the offline copy of your data from this phone. Your bridge and ZeppBridge library are not touched.") },
+            text = { Text("This removes the server address, token, the offline copy of your data and any imported history from this phone. Your bridge and ZeppBridge library are not touched.") },
             confirmButton = { TextButton(onClick = { confirmSignOut = false; vm.signOut(); onBack() }) { Text(if (s.demo) "Leave" else "Disconnect") } },
             dismissButton = { TextButton(onClick = { confirmSignOut = false }) { Text("Cancel") } },
         )
