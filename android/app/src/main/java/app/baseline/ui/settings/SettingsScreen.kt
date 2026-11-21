@@ -116,6 +116,24 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
             }
             item {
                 SectionCard {
+                    Text("Comfort", style = MaterialTheme.typography.titleMedium)
+                    Text("For days when numbers feel like too much.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    ListItem(
+                        headlineContent = { Text("Calm mode") },
+                        supportingContent = { Text("Today shows words instead of numbers. Detail pages keep their numbers.") },
+                        trailingContent = { Switch(checked = s.calmMode, onCheckedChange = { c -> vm.update { it.copy(calmMode = c) } }) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                    ListItem(
+                        headlineContent = { Text("Hold sleep until noon") },
+                        supportingContent = { Text("Keep last night's sleep details off Today until the afternoon, so the morning starts with how you feel.") },
+                        trailingContent = { Switch(checked = s.holdSleepScoreUntilAfternoon, onCheckedChange = { c -> vm.update { it.copy(holdSleepScoreUntilAfternoon = c) } }) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
+            }
+            item {
+                SectionCard {
                     Text("Widgets", style = MaterialTheme.typography.titleMedium)
                     Text("Glanceable health on your home screen — and on the lock screen where your phone supports it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))

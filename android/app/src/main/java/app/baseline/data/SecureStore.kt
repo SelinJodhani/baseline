@@ -39,6 +39,10 @@ data class AppSettings(
     val geminiModel: String = "gemini-3.5-flash-lite",
     val lastUpdateCheck: Long = 0,
     val skippedVersion: String = "",
+    /** Calm mode: Today shows words instead of numbers (story pages keep their numbers). */
+    val calmMode: Boolean = false,
+    /** Keep last night's sleep details off Today until noon, so the morning isn't judged by a number. */
+    val holdSleepScoreUntilAfternoon: Boolean = false,
 )
 
 /**
@@ -102,3 +106,9 @@ class SecureStore(context: Context) {
         store.updateData(transform)
     }
 }
+
+/** Whether glanceable surfaces (Today, widgets) should show numbers, or calm words only. */
+fun AppSettings.showNumbers(): Boolean = !calmMode
+
+/** Whether last night's sleep details should stay hidden right now ([hour] = local hour of day, 0–23). */
+fun AppSettings.holdSleepDetail(hour: Int): Boolean = holdSleepScoreUntilAfternoon && hour < 12

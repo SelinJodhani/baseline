@@ -1,6 +1,7 @@
 package app.baseline
 
 import android.app.Application
+import app.baseline.data.JournalStore
 import app.baseline.data.Repository
 import app.baseline.data.SecureStore
 import app.baseline.work.RefreshWorker
@@ -10,6 +11,8 @@ class BaselineApp : Application() {
         private set
     lateinit var repository: Repository
         private set
+    /** Check-ins and Rest/Sick/Travel modes; opened on first use. */
+    val journal: JournalStore by lazy { JournalStore(this) }
 
     override fun onCreate() {
         super.onCreate()

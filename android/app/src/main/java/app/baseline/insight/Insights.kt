@@ -2,9 +2,14 @@ package app.baseline.insight
 
 import app.baseline.data.AppSettings
 import app.baseline.data.Day
+import app.baseline.data.Feel
+import app.baseline.data.Journal
+import app.baseline.data.LifeMode
+import app.baseline.data.ModeSpan
 import app.baseline.data.Sleep
 import app.baseline.data.Summary
 import app.baseline.data.Workout
+import app.baseline.data.showNumbers
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -23,6 +28,8 @@ object Rules {
     const val BASELINE_DAYS = 60
     /** Minimum nights before a baseline is trusted. */
     const val MIN_BASELINE = 14
+    /** Below this many nights a baseline still works, but verdicts carry a "Low confidence" label. */
+    const val CONFIDENT_BASELINE = 30
     /** Normal band = baseline mean ± this × SD — the smallest worthwhile change (Plews/Buchheit). */
     const val NORMAL_BAND_SD = 0.5
     const val SHORT_WINDOW = 7
@@ -42,6 +49,27 @@ object Rules {
 
 enum class Level { Great, Good, Fair, Low, Unknown }
 
+/** What readiness asks you to do today: the headline word, before any number. */
+enum class Verb(val label: String) {
+    Recover("Recover"), Easy("Easy"), Ready("Ready"), Push("Push");
+
+    companion object {
+        fun of(level: Level): Verb? = when (level) {
+            Level.Great -> Push
+            Level.Good -> Ready
+            Level.Fair -> Easy
+            Level.Low -> Recover
+            Level.Unknown -> null
+        }
+    }
+}
+
+/** How much to trust a verdict: [Calibrating] = no baseline yet; [Low] = thin or missing data. */
+enum class Confidence(val label: String) { High("Confident"), Low("Low confidence"), Calibrating("Calibrating") }
+
+/** How the morning check-in compares with the numbers. Null (on [Insights.feelMatch]) = neutral or unknown. */
+enum class FeelMatch { Agrees, FeelsWorse, FeelsBetter }
+
 data class Baseline(val mean: Double, val sd: Double, val n: Int, val minHalfWidth: Double = 0.0) {
     private val half get() = maxOf(Rules.NORMAL_BAND_SD * sd, minHalfWidth)
     val low get() = mean - half
@@ -58,9 +86,18 @@ data class Signal(
     val z: Double?,
     val level: Level,
     val trend: List<Double?>,
+    val confidence: Confidence = Confidence.High,
 )
 
-data class Contributor(val name: String, val detail: String, val level: Level)
+data class Contributor(
+    val name: String,
+    val detail: String,
+    val level: Level,
+    /** The input as a plain sentence against its band, with no numbers ("HRV is in your normal range."). */
+    val sentence: String = detail,
+    /** Raw numbers for the curious: value, band, z and weight. */
+    val raw: String = detail,
+)
 
 data class Readiness(
     val score: Int?,
@@ -69,6 +106,9 @@ data class Readiness(
     val contributors: List<Contributor>,
     val calibratingNights: Int?,
     val zeppScore: Int?,
+    /** The headline action; null while calibrating or waiting for data. [headline] carries its label. */
+    val verb: Verb? = null,
+    val confidence: Confidence = Confidence.Calibrating,
 )
 
 data class SleepInsight(
@@ -126,11 +166,23 @@ data class Insights(
     val weightTrend: List<Pair<Long, Double>>,
     val weightWeeklyChange: Double?,
     val daysOfData: Int,
+    /** Today's check-in answer, if given. */
+    val feel: Feel? = null,
+    val feelMatch: FeelMatch? = null,
+    /** Rest / Sick / Travel mode in force today; while set, targets are paused. */
+    val mode: ModeSpan? = null,
 )
 
-class InsightEngine(private val s: Summary, private val settings: AppSettings, now: Instant = Instant.now()) {
+class InsightEngine(
+    private val s: Summary,
+    private val settings: AppSettings,
+    now: Instant = Instant.now(),
+    private val journal: Journal = Journal(),
+) {
     val zone: ZoneId = runCatching { ZoneId.of(s.timezone ?: "") }.getOrElse { ZoneId.systemDefault() }
     val today: LocalDate = now.atZone(zone).toLocalDate()
+    /** Sick and travel days: still shown, but left out of every personal baseline. */
+    val excludedDates: Set<LocalDate> = journal.excludedDates(today)
     private val byDate: Map<LocalDate, Day> = s.days.associateBy { it.localDate }
     private val nowSec = now.epochSecond
 
@@ -172,6 +224,9 @@ class InsightEngine(private val s: Summary, private val settings: AppSettings, n
             resp.today != null && resp.baseline != null && resp.today - resp.baseline.mean >= Rules.ILL_RESP_DELTA
         val readiness = readiness(hrv, rhr, sleep)
         val activity = activityInsight()
+        val feel = journal.feelOn(today)
+        val match = feelMatch(readiness.verb, feel)
+        val mode = journal.activeMode(today)
         val todayDay = byDate[today] ?: byDate[today.minusDays(1)]
         val odi = latest { it.spo2Odi }
         val spo2 = latest { it.spo2NightScore }
@@ -179,7 +234,7 @@ class InsightEngine(private val s: Summary, private val settings: AppSettings, n
         return Insights(
             today = today, zone = zone, hrv = hrv, rhr = rhr, resp = resp,
             readiness = readiness, sleep = sleep, activity = activity,
-            focus = focus(readiness, sleep, activity, illness, rhr, resp),
+            focus = focus(readiness, sleep, activity, illness, rhr, resp, mode, match),
             illnessFlag = illness,
             stressToday = todayDay?.stress,
             stress7 = Stats.mean(series(7) { it.stress }.filterNotNull()),
@@ -192,6 +247,7 @@ class InsightEngine(private val s: Summary, private val settings: AppSettings, n
             },
             weightTrend = wTrend, weightWeeklyChange = wRate,
             daysOfData = s.days.count { it.restingHr != null || it.sleepHrv != null || it.steps != null },
+            feel = feel, feelMatch = match, mode = mode,
         )
     }
 
@@ -203,8 +259,9 @@ class InsightEngine(private val s: Summary, private val settings: AppSettings, n
         val tx: (Double?) -> Double? = { v -> if (logSpace) Stats.lnOrNull(v) else v }
         val todayRaw = byDate[on]?.let(f)
         val recent = series(Rules.SHORT_WINDOW, on) { f(it) }
-        // The 60 days up to yesterday; with a short history, whatever there is.
-        val base = series(Rules.BASELINE_DAYS, on.minusDays(1)) { f(it) }.mapNotNull(tx)
+        // The 60 days up to yesterday, minus sick and travel days; with a short history, whatever there is.
+        val base = dates(Rules.BASELINE_DAYS, on.minusDays(1)).filter { it !in excludedDates }
+            .mapNotNull { d -> tx(byDate[d]?.let(f)) }
         val baseline = if (base.size >= Rules.MIN_BASELINE) {
             val m = base.average()
             val sd = (Stats.sd(base) ?: 0.0).coerceAtLeast(if (logSpace) 0.03 else sdFloor)
@@ -234,48 +291,130 @@ class InsightEngine(private val s: Summary, private val settings: AppSettings, n
             z >= -1.0 -> Level.Fair
             else -> Level.Low
         }
+        val confidence = when {
+            baseline == null -> Confidence.Calibrating
+            todayRaw == null || baseline.n < Rules.CONFIDENT_BASELINE -> Confidence.Low
+            else -> Confidence.High
+        }
         return Signal(
             today = todayRaw, avg7 = Stats.mean(recent.filterNotNull()), baseline = shownBaseline,
-            z = z, level = level, trend = series(30, on) { f(it) },
+            z = z, level = level, trend = series(30, on) { f(it) }, confidence = confidence,
         )
     }
 
     private fun readiness(hrv: Signal, rhr: Signal, sleep: SleepInsight): Readiness {
         val zepp = (byDate[today] ?: byDate[today.minusDays(1)])?.zeppReadiness?.roundToInt()
         val sleepZ = sleep.asleepMin?.let { ((it - sleep.needMin) / 60.0).coerceIn(-3.0, 1.0) }
+        // HRV can be missing for a night while its baseline is fine: then score from resting HR and sleep,
+        // clearly labelled low confidence, rather than going blank.
+        val hrvMissing = hrv.z == null && hrv.baseline != null && rhr.z != null
         val contributors = buildList {
-            add(Contributor("HRV", hrv.describe("ms", higherIsBetter = true), hrv.level))
-            add(Contributor("Resting HR", rhr.describe("bpm", higherIsBetter = false), rhr.level))
-            add(Contributor("Sleep", sleep.asleepMin?.let { "${fmtDuration(it)} of ${fmtDuration(sleep.needMin)} need" } ?: "No sleep recorded", sleep.level))
+            add(Contributor(
+                "HRV", hrv.describe("ms", higherIsBetter = true), hrv.level,
+                sentence = hrvSentence(hrv), raw = hrv.raw("ms", Rules.W_HRV, leftOut = hrvMissing),
+            ))
+            add(Contributor(
+                "Resting HR", rhr.describe("bpm", higherIsBetter = false), rhr.level,
+                sentence = rhrSentence(rhr), raw = rhr.raw("bpm", Rules.W_RHR, leftOut = false),
+            ))
+            add(Contributor(
+                "Sleep", sleep.asleepMin?.let { "${fmtDuration(it)} of ${fmtDuration(sleep.needMin)} need" } ?: "No sleep recorded", sleep.level,
+                sentence = sleepSentence(sleep.level),
+                raw = sleep.asleepMin?.let {
+                    "${fmtDuration(it)} asleep · need ${fmtDuration(sleep.needMin)} · ${"%+.1f".format(sleepZ ?: 0.0)} h vs need · weight ${pct(Rules.W_SLEEP)}"
+                } ?: "No sleep recorded · counts as neutral · weight ${pct(Rules.W_SLEEP)}",
+            ))
         }
-        if (hrv.z == null || rhr.z == null) {
+        if (rhr.z == null || (hrv.z == null && !hrvMissing)) {
             val nights = s.days.count { it.sleepHrv != null }
+            val calibrating = nights < Rules.MIN_BASELINE
             return Readiness(
                 score = null, level = Level.Unknown,
-                headline = if (nights < Rules.MIN_BASELINE) "Calibrating" else "Waiting for data",
+                headline = if (calibrating) "Calibrating" else "Waiting for data",
                 contributors = contributors,
-                calibratingNights = nights.takeIf { it < Rules.MIN_BASELINE },
+                calibratingNights = nights.takeIf { calibrating },
                 zeppScore = zepp,
+                verb = null,
+                confidence = if (calibrating) Confidence.Calibrating else Confidence.Low,
             )
         }
-        val z = Rules.W_HRV * hrv.z.coerceIn(-3.0, 2.0) + Rules.W_RHR * rhr.z.coerceIn(-3.0, 2.0) +
-            Rules.W_SLEEP * (sleepZ ?: 0.0)
+        val rz = rhr.z.coerceIn(-3.0, 2.0)
+        val z = if (hrv.z != null) {
+            Rules.W_HRV * hrv.z.coerceIn(-3.0, 2.0) + Rules.W_RHR * rz + Rules.W_SLEEP * (sleepZ ?: 0.0)
+        } else {
+            (Rules.W_RHR * rz + Rules.W_SLEEP * (sleepZ ?: 0.0)) / (Rules.W_RHR + Rules.W_SLEEP)
+        }
         val score = (70 + 15 * z).roundToInt().coerceIn(1, 100)
         val parts = listOfNotNull(hrv.z, rhr.z, sleepZ)
+        val confidence = if (hrvMissing || hrv.confidence != Confidence.High || rhr.confidence != Confidence.High || sleep.asleepMin == null) {
+            Confidence.Low
+        } else Confidence.High
         // Bands from the evidence review: red needs a broad deficit; one weak signal only makes it amber.
-        val level = when {
+        val banded = when {
             z < -1.5 -> Level.Low
             z < -0.5 || parts.any { it < -1.5 } -> Level.Fair
             z >= 0.5 -> Level.Great
             else -> Level.Good
         }
-        val headline = when (level) {
-            Level.Great -> "Primed"
-            Level.Good -> "Ready"
-            Level.Fair -> "Take it easier"
-            else -> "Recover"
+        // Never say "Push" on thin data.
+        val level = if (confidence == Confidence.Low && banded == Level.Great) Level.Good else banded
+        val verb = Verb.of(level)!!
+        return Readiness(score, level, verb.label, contributors, null, zepp, verb, confidence)
+    }
+
+    private fun pct(w: Double) = "${(w * 100).roundToInt()}%"
+
+    private fun Signal.raw(unit: String, weight: Double, leftOut: Boolean): String {
+        val b = baseline
+        val value = today?.let { "${it.roundToInt()} $unit" } ?: "No reading"
+        val band = b?.let { "normal ${it.low.roundToInt()}–${it.high.roundToInt()} $unit (${it.n} nights)" } ?: "building baseline"
+        val zs = z?.let { " · z ${"%+.1f".format(it)}" } ?: ""
+        val w = if (leftOut) "left out today" else "weight ${pct(weight)}"
+        return "$value · $band$zs · $w"
+    }
+
+    private fun hrvSentence(hrv: Signal): String {
+        val z = hrv.z
+        return when {
+            hrv.today == null -> "No HRV reading from last night."
+            hrv.baseline == null || z == null -> "Still learning your usual HRV."
+            z >= Rules.NORMAL_BAND_SD -> "HRV is higher than usual, a sign you've recovered well."
+            z >= -Rules.NORMAL_BAND_SD -> "HRV is in your normal range."
+            z >= -1.0 -> "HRV is a little below your normal."
+            else -> "HRV is well below your normal."
         }
-        return Readiness(score, level, headline, contributors, null, zepp)
+    }
+
+    private fun rhrSentence(rhr: Signal): String = when {
+        rhr.today == null -> "No resting heart rate from last night."
+        else -> when (rhr.level) {
+            Level.Great -> "Resting heart rate is lower than usual, which is a good sign."
+            Level.Good -> "Resting heart rate is in your normal range."
+            Level.Fair -> "Resting heart rate is a little higher than usual."
+            Level.Low -> "Resting heart rate is well above your usual."
+            Level.Unknown -> "Still learning your usual resting heart rate."
+        }
+    }
+
+    private fun sleepSentence(l: Level): String = when (l) {
+        Level.Great -> "You slept about as much as you need."
+        Level.Good -> "You slept a little less than you need."
+        Level.Fair -> "A short night, well under your need."
+        Level.Low -> "A very short night."
+        Level.Unknown -> "No sleep recorded last night."
+    }
+
+    /** Agreement between the check-in and the verb. Neutral pairs (OK vs Push or Recover) return null. */
+    private fun feelMatch(verb: Verb?, feel: Feel?): FeelMatch? {
+        if (verb == null || feel == null) return null
+        val v = when (verb) { Verb.Recover -> 0.0; Verb.Easy -> 1.0; Verb.Ready -> 2.0; Verb.Push -> 3.0 }
+        val f = when (feel) { Feel.Drained -> 0.0; Feel.Ok -> 1.5; Feel.Great -> 3.0 }
+        return when {
+            abs(v - f) <= 1.0 -> FeelMatch.Agrees
+            v - f >= 2.0 -> FeelMatch.FeelsWorse
+            f - v >= 2.0 -> FeelMatch.FeelsBetter
+            else -> null
+        }
     }
 
     private fun Signal.describe(unit: String, higherIsBetter: Boolean): String {
@@ -392,8 +531,33 @@ class InsightEngine(private val s: Summary, private val settings: AppSettings, n
         return LoadState(acute, chronic, form, ratio, label, level)
     }
 
-    private fun focus(r: Readiness, sleep: SleepInsight, a: ActivityInsight, ill: Boolean, rhr: Signal, resp: Signal): Focus {
+    /** Gentle copy while a mode is on. Targets are paused, so nothing here mentions steps or minutes. */
+    private fun modeFocus(m: ModeSpan): Focus = when (m.mode) {
+        LifeMode.Sick -> Focus(
+            "Rest and recover",
+            "Targets are paused, and these days won't count toward your normal. Drink plenty, eat something simple, and sleep as much as you can.",
+            Focus.Kind.Sick, Level.Unknown,
+        )
+        LifeMode.Travel -> Focus(
+            "Travel days",
+            "Targets are paused, and these days won't skew your normal. Get some morning daylight where you are, and keep meals and bedtime as steady as you can.",
+            Focus.Kind.Rest, Level.Unknown,
+        )
+        LifeMode.Rest -> Focus(
+            "A lighter stretch",
+            "Targets are paused. Move if it feels good, eat well, and let sleep do the work.",
+            Focus.Kind.Rest, Level.Unknown,
+        )
+    }
+
+    private fun focus(
+        r: Readiness, sleep: SleepInsight, a: ActivityInsight, ill: Boolean, rhr: Signal, resp: Signal,
+        mode: ModeSpan? = null, match: FeelMatch? = null,
+    ): Focus {
         val hour = Instant.ofEpochSecond(nowSec).atZone(zone).hour
+        val numbers = settings.showNumbers()
+        // Sick and travel days are expected to look off; the user already told us why.
+        if (mode != null && mode.mode != LifeMode.Rest) return modeFocus(mode)
         if (ill) {
             val dr = rhr.today?.let { t -> rhr.baseline?.let { t - it.mean } }
             val db = resp.today?.let { t -> resp.baseline?.let { t - it.mean } }
@@ -404,6 +568,7 @@ class InsightEngine(private val s: Summary, private val settings: AppSettings, n
                 Focus.Kind.Sick, Level.Low,
             )
         }
+        if (mode != null) return modeFocus(mode)
         if (r.calibratingNights != null) {
             return Focus(
                 "Learning your normal",
@@ -412,15 +577,34 @@ class InsightEngine(private val s: Summary, private val settings: AppSettings, n
                 Focus.Kind.Calibrate, Level.Unknown,
             )
         }
+        // The check-in disagrees with the numbers: say so plainly and meet in the middle.
+        if (match == FeelMatch.FeelsWorse) {
+            return Focus(
+                "Keep it moderate",
+                "Numbers say ready, but you feel drained — keep it moderate today. Easy movement, and an early night if you can.",
+                Focus.Kind.Rest, Level.Fair,
+            )
+        }
+        if (match == FeelMatch.FeelsBetter) {
+            val says = if (r.verb == Verb.Recover) "recover" else "take it easy"
+            return Focus(
+                "Go by feel, gently",
+                "Numbers say $says, but you feel great — a normal day is fine. Save the hardest efforts for another day.",
+                Focus.Kind.Steady, Level.Good,
+            )
+        }
         if (r.level == Level.Low) {
             return Focus("Make today a recovery day", "HRV and resting HR say you're under-recovered. Walk, stretch, eat well and protect tonight's sleep.", Focus.Kind.Rest, Level.Low)
         }
         if (sleep.debt7Min >= 180) {
             val bt = sleep.suggestedBedtime?.let { " Aim to be in bed by ${fmtTime(it)}." } ?: ""
-            return Focus("Pay down your sleep debt", "You're ${fmtDuration(sleep.debt7Min)} short this week.$bt", Focus.Kind.Sleep, Level.Fair)
+            val body = if (numbers) "You're ${fmtDuration(sleep.debt7Min)} short this week.$bt" else "You've been short on sleep this week.$bt"
+            return Focus("Pay down your sleep debt", body, Focus.Kind.Sleep, Level.Fair)
         }
         if (r.level == Level.Great && a.activeWeek < a.activeGoal) {
-            return Focus("Good day to push", "You're well recovered and ${a.activeGoal - a.activeWeek} active minutes short of your weekly target. Make today's session count.", Focus.Kind.Train, Level.Great)
+            val body = if (numbers) "You're well recovered and ${a.activeGoal - a.activeWeek} active minutes short of your weekly target. Make today's session count."
+            else "You're well recovered and a little short of your weekly active target. Make today's session count."
+            return Focus("Good day to push", body, Focus.Kind.Train, Level.Great)
         }
         if (r.level == Level.Fair) {
             return Focus("Keep it easy", "Recovery is a little below your normal. Easy cardio or skill work beats intensity today.", Focus.Kind.Rest, Level.Fair)
@@ -428,11 +612,17 @@ class InsightEngine(private val s: Summary, private val settings: AppSettings, n
         val steps = a.stepsToday
         if (steps != null && hour in 12..20 && steps < a.stepGoal * 0.6) {
             val left = a.stepGoal - steps
-            return Focus("${"%,d".format(left)} steps to go", "About ${(left / 110.0).roundToInt()} minutes of brisk walking gets you there.", Focus.Kind.Move, Level.Good)
+            return if (numbers) Focus("${"%,d".format(left)} steps to go", "About ${(left / 110.0).roundToInt()} minutes of brisk walking gets you there.", Focus.Kind.Move, Level.Good)
+            else Focus("Time for a walk", "A brisk walk later today gets you to your step goal.", Focus.Kind.Move, Level.Good)
         }
+        val met = a.activeWeek >= a.activeGoal
         return Focus(
             if (r.level == Level.Great) "You're primed" else "Steady — train as planned",
-            if (a.activeWeek >= a.activeGoal) "You've hit ${a.activeWeek} of ${a.activeGoal} active minutes this week. Keep the rhythm." else "Recovery looks normal. Stick to the plan.",
+            when {
+                met && numbers -> "You've hit ${a.activeWeek} of ${a.activeGoal} active minutes this week. Keep the rhythm."
+                met -> "You've hit your weekly active target. Keep the rhythm."
+                else -> "Recovery looks normal. Stick to the plan."
+            },
             if (r.level == Level.Great) Focus.Kind.Train else Focus.Kind.Steady, r.level,
         )
     }
