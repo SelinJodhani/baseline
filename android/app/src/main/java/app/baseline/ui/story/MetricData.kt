@@ -51,7 +51,8 @@ fun hasData(m: Model, metric: Metric): Boolean = when (metric) {
 fun values(m: Model, metric: Metric, days: Int): List<Double?> {
     val e = m.engine
     return when (metric) {
-        Metric.Readiness -> e.dates(days).map { e.readinessOn(it) }
+        // Until Baseline's own score unlocks (14 nights of HRV), fall back to Zepp's daily readiness.
+        Metric.Readiness -> e.dates(days).map { d -> e.readinessOn(d) ?: e.day(d)?.zeppReadiness }
         Metric.Hrv -> e.series(days) { it.sleepHrv }
         Metric.RestingHr -> e.series(days) { it.restingHr ?: it.sleepRhr }
         Metric.Breathing -> e.series(days) { it.respRate }

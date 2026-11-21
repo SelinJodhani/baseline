@@ -46,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.baseline.Model
@@ -115,7 +116,7 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit) {
                     Metric.Hrv -> m.insights.hrv.baseline?.let { it.low..it.high }
                     Metric.RestingHr -> m.insights.rhr.baseline?.let { it.low..it.high }
                     Metric.Breathing -> m.insights.resp.baseline?.let { it.low..it.high }
-                    Metric.Readiness -> 62.0..80.0
+                    Metric.Readiness -> if (m.insights.readiness.calibratingNights == null) 62.0..80.0 else null // Baseline's scale, not Zepp's
                     else -> null
                 }
                 val goal = when (metric) {
@@ -136,7 +137,16 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit) {
                         )
                     }
                     Spacer(Modifier.height(8.dp))
-                    TrendChart(
+                    if (vals.all { it == null }) {
+                        Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
+                            Text(
+                                if (metric == Metric.Readiness) "No readiness scores yet — Zepp hasn't sent one and Baseline is still learning your normal."
+                                else "No readings in this period yet.",
+                                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 16.dp),
+                            )
+                        }
+                    } else TrendChart(
                         values = vals, color = sp.color,
                         labels = ChartLabels(dates.map { if (dates.size <= 14) Fmt.weekdayShort(it) else Fmt.dayMonth(it) }, sp.format),
                         average = avg, band = band, goal = goal, bars = sp.bars, onSelect = { sel = it },
@@ -146,6 +156,13 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit) {
                         ranges.forEachIndexed { i, (_, l) ->
                             SegmentedButton(selected = rangeIdx == i, onClick = { rangeIdx = i }, shape = SegmentedButtonDefaults.itemShape(i, ranges.size), icon = {}) { Text(l) }
                         }
+                    }
+                    if (metric == Metric.Readiness && m.insights.readiness.calibratingNights != null && vals.any { it != null }) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            "Showing Zepp's readiness score until Baseline has ${Rules.MIN_BASELINE} nights of HRV (${m.insights.readiness.calibratingNights} so far).",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     if (band != null && metric != Metric.Readiness) {
                         Spacer(Modifier.height(10.dp))

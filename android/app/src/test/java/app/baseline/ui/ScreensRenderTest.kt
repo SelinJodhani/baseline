@@ -100,6 +100,11 @@ class ScreensRenderTest {
 
     @Test fun storyHrv() = shoot("story-hrv") { StoryScreen(demo, Metric.Hrv) {} }
     @Test fun storyHrvSparse() = shoot("story-hrv-sparse") { StoryScreen(sparse, Metric.Hrv) {} }
+    @Test fun storyReadinessCalibrating() = shoot("story-readiness-calibrating") { StoryScreen(sparse, Metric.Readiness) {} }
+    @Test fun storyReadinessEmpty() = shoot("story-readiness-empty") {
+        val s = sparse.data.summary!!
+        StoryScreen(model(s.copy(days = s.days.map { it.copy(zeppReadiness = null) })), Metric.Readiness) {}
+    }
     @Test fun storySteps() = shoot("story-steps") { StoryScreen(demo, Metric.Steps) {} }
     @Test fun storyRhr() = shoot("story-rhr") { StoryScreen(demo, Metric.RestingHr) {} }
     @Test fun today() = shoot("today") { Surface { TodayScreen(demo, {}, {}, {}, {}) } }
