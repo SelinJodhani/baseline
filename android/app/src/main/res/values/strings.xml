@@ -1,5 +1,11 @@
 <resources>
     <string name="app_name">Ojas</string>
-    <string name="widget_today">Ojas · Today</string>
-    <string name="widget_today_description">Readiness, last night\'s sleep and today\'s steps</string>
+    <string name="widget_today">Today</string>
+    <string name="widget_today_description">Readiness, today\'s focus, and sleep, steps and HRV at a glance</string>
+    <string name="widget_readiness">Readiness</string>
+    <string name="widget_readiness_description">How recovered you are today, against your own normal</string>
+    <string name="widget_sleep">Sleep</string>
+    <string name="widget_sleep_description">Last night against your sleep need, stages, and tonight\'s bedtime</string>
+    <string name="widget_move">Move</string>
+    <string name="widget_move_description">Steps against your goal and this week\'s active minutes</string>
 </resources>

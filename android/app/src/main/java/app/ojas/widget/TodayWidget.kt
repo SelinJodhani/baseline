@@ -1,102 +1,89 @@
 package app.ojas.widget
 
 import android.content.Context
+import android.os.Build
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
-import androidx.glance.GlanceTheme
-import androidx.glance.action.actionStartActivity
-import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
-import androidx.glance.appwidget.cornerRadius
-import androidx.glance.appwidget.provideContent
 import androidx.glance.appwidget.updateAll
-import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
+import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
-import androidx.glance.layout.padding
 import androidx.glance.layout.width
-import androidx.glance.text.FontWeight
-import androidx.glance.text.Text
-import androidx.glance.text.TextStyle
-import androidx.glance.unit.ColorProvider
-import app.ojas.MainActivity
-import app.ojas.OjasApp
-import app.ojas.insight.InsightEngine
 import app.ojas.insight.Insights
-import app.ojas.insight.Level
-import app.ojas.ui.common.Fmt
-import kotlinx.coroutines.flow.first
+import kotlin.math.roundToInt
 
 class TodayWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = TodayWidget()
 }
 
-class TodayWidget : GlanceAppWidget() {
-    override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val app = context.applicationContext as OjasApp
-        if (app.repository.state.value.summary == null) app.repository.loadInitial()
-        val summary = app.repository.state.value.summary
-        val settings = app.store.settings.first()
-        val insights = summary?.let { runCatching { InsightEngine(it, settings).compute() }.getOrNull() }
-        provideContent { GlanceTheme { Content(insights) } }
+/** The one-glance day: readiness + headline, today's focus, and sleep / steps / HRV. */
+class TodayWidget : OjasWidget(Tab.TODAY, setOf(NARROW, WIDE, TALL)) {
+    companion object {
+        val NARROW = DpSize(180.dp, 110.dp)
+        val WIDE = DpSize(250.dp, 110.dp)
+        val TALL = DpSize(250.dp, 180.dp)
+
+        /** Refreshes every Ojas widget. The app and RefreshWorker call this after each data refresh. */
+        suspend fun updateAll(context: Context) {
+            runCatching { TodayWidget().updateAll(context) }
+            runCatching { ReadinessWidget().updateAll(context) }
+            runCatching { SleepWidget().updateAll(context) }
+            runCatching { MoveWidget().updateAll(context) }
+        }
+
+        /** Asks the launcher to regenerate widget-picker previews (Android 15+, rate-limited by the system). */
+        suspend fun publishPreviews(context: Context) {
+            if (Build.VERSION.SDK_INT < 35) return
+            val m = GlanceAppWidgetManager(context)
+            runCatching { m.setWidgetPreviews(TodayWidgetReceiver::class) }
+            runCatching { m.setWidgetPreviews(ReadinessWidgetReceiver::class) }
+            runCatching { m.setWidgetPreviews(SleepWidgetReceiver::class) }
+            runCatching { m.setWidgetPreviews(MoveWidgetReceiver::class) }
+        }
     }
 
     @Composable
-    private fun Content(i: Insights?) {
-        val onSurface = GlanceTheme.colors.onSurface
-        val muted = GlanceTheme.colors.onSurfaceVariant
-        Column(
-            GlanceModifier.fillMaxSize().cornerRadius(24.dp).background(GlanceTheme.colors.widgetBackground)
-                .padding(16.dp).clickable(actionStartActivity<MainActivity>()),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (i == null) {
-                Text("Open Ojas to connect", style = TextStyle(color = onSurface, fontSize = 14.sp))
-                return@Column
+    override fun Content(context: Context, state: WidgetState, size: DpSize) {
+        val i = state.insights ?: return
+        val tall = size.height >= TALL.height
+        val gauge = when { tall -> 112.dp; size.width >= WIDE.width -> 92.dp; else -> 80.dp }
+        Row(GlanceModifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                GaugeWithScore(context, i, gauge, if (tall) 10.dp else 8.dp, if (tall) 32.sp else 26.sp, showCaption = false)
+                Value(headline(i), if (tall) 15.sp else 13.sp, WColors.level(i.readiness.level))
             }
-            val r = i.readiness
-            val score = r.score ?: r.zeppScore
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(score?.toString() ?: "—", style = TextStyle(color = ColorProvider(levelColor(r.level)), fontSize = 40.sp, fontWeight = FontWeight.Bold))
-                Spacer(GlanceModifier.width(10.dp))
-                Column {
-                    Text(if (r.score == null) "Zepp readiness" else r.headline, style = TextStyle(color = onSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium))
-                    Text(i.focus.title, style = TextStyle(color = muted, fontSize = 12.sp), maxLines = 1)
+            Spacer(GlanceModifier.width(if (tall) 16.dp else 12.dp))
+            Column(GlanceModifier.defaultWeight(), verticalAlignment = Alignment.CenterVertically) {
+                Label("TODAY", 10.sp)
+                Value(i.focus.title, if (tall) 17.sp else 14.sp)
+                if (tall) {
+                    Spacer(GlanceModifier.height(2.dp))
+                    Label(i.focus.body, 11.sp, maxLines = 2)
                 }
-            }
-            Spacer(GlanceModifier.height(10.dp))
-            Row {
-                Column(GlanceModifier.defaultWeight()) {
-                    Text("Sleep", style = TextStyle(color = muted, fontSize = 11.sp))
-                    Text(Fmt.duration(i.sleep.asleepMin), style = TextStyle(color = onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold))
-                }
-                Column(GlanceModifier.defaultWeight()) {
-                    Text("Steps", style = TextStyle(color = muted, fontSize = 11.sp))
-                    Text(i.activity.stepsToday?.let { "%,d".format(it) } ?: "—", style = TextStyle(color = onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold))
-                }
-                Column(GlanceModifier.defaultWeight()) {
-                    Text("HRV", style = TextStyle(color = muted, fontSize = 11.sp))
-                    Text(i.hrv.today?.let { "${it.toInt()}" } ?: "—", style = TextStyle(color = onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold))
-                }
+                Spacer(GlanceModifier.height(if (tall) 12.dp else 8.dp))
+                Stats(i, compact = size.width < WIDE.width)
+                StaleHint(state)
             }
         }
     }
 
-    private fun levelColor(l: Level) = when (l) {
-        Level.Great -> Color(0xFF14A37A); Level.Good -> Color(0xFF6E9E1E); Level.Fair -> Color(0xFFD08A00)
-        Level.Low -> Color(0xFFD9483B); Level.Unknown -> Color(0xFF6F7975)
-    }
-
-    companion object {
-        suspend fun updateAll(context: Context) = runCatching { TodayWidget().updateAll(context) }
+    @Composable
+    private fun Stats(i: Insights, compact: Boolean) {
+        val v = if (compact) 14.sp else 16.sp
+        Row(GlanceModifier.fillMaxWidth()) {
+            MiniStat("Sleep", fmtDuration(i.sleep.asleepMin), i.sleep.level, GlanceModifier.defaultWeight(), v)
+            MiniStat("Steps", fmtSteps(i.activity.stepsToday), null, GlanceModifier.defaultWeight(), v)
+            if (!compact) MiniStat("HRV", i.hrv.today?.roundToInt()?.toString() ?: "—", i.hrv.level, GlanceModifier.defaultWeight(), v)
+        }
     }
 }

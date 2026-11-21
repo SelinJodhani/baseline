@@ -26,6 +26,7 @@
             </intent-filter>
         </activity>
 
+        <!-- Home-screen / lock-screen widgets (Glance). Refreshed by RefreshWorker and on app refresh. -->
         <receiver
             android:name=".widget.TodayWidgetReceiver"
             android:exported="true"
@@ -34,6 +35,33 @@
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_today_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.ReadinessWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_readiness">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_readiness_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.SleepWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_sleep">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_sleep_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.MoveWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_move">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_move_info" />
         </receiver>
     </application>
 </manifest>
