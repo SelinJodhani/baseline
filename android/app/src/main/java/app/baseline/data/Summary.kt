@@ -98,6 +98,11 @@ data class Sleep(
     val score: Int? = null,
     /** [startEpoch, endEpoch, stage] where stage is deep | light | rem | awake (mixed JSON types). */
     val stages: List<List<JsonPrimitive>>? = null,
+    /**
+     * Lowest heart rate of this sleep and when it happened (bridge 0.3.0+, recent nights only): the minimum of
+     * a 5-minute rolling mean of the per-minute readings. Null when the bridge didn't send it.
+     */
+    val hrNadir: HrNadir? = null,
 ) {
     /** Stages as (start, end, name), skipping malformed rows. */
     val stageSpans: List<Triple<Long, Long, String>>
@@ -112,6 +117,10 @@ data class Sleep(
     val asleepMin: Int
         get() = durationMin ?: listOfNotNull(deepMin, lightMin, remMin).sum()
 }
+
+/** A night's lowest heart rate: [bpm] at epoch second [at]. */
+@Serializable
+data class HrNadir(val bpm: Double, val at: Long)
 
 /** Hourly aggregates: [epochHourStart, min, avg, max]. */
 @Serializable

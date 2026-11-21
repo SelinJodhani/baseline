@@ -6,6 +6,9 @@ enum class Metric(val label: String) {
     Sleep("Sleep"), Consistency("Sleep rhythm"),
     Steps("Steps"), Active("Active minutes"), Vo2("VO₂ max"), Load("Training load"),
     Stress("Stress"), Spo2("Night oxygen"), Weight("Weight"),
+    // Phase 3
+    Signals("Overnight signals"), HrvTrend("HRV trend"), HrDip("Overnight low"),
+    SleepNeed("Sleep need"), SleepTiming("Sleep timing"), Zones("Time in zones"), Movement("Movement today"),
 }
 
 enum class Reliability(val label: String) {
@@ -105,19 +108,129 @@ fun storyOf(m: Metric): Story = when (m) {
         reliability = Reliability.High,
     )
     Metric.Consistency -> Story(
-        tagline = "How much your bedtime moves from night to night.",
+        tagline = "How alike your days are: asleep and awake at the same times, day after day.",
         why = "Large studies (UK Biobank, over 60,000 people) found sleep regularity predicts mortality and heart disease at least as strongly as duration. An irregular schedule keeps your body clock in a constant mild jet lag.",
         lookFor = listOf(
-            "Under ±30 minutes is excellent. Over ±60 minutes is worth working on.",
+            "83 or more is regular. 72–83 is fair. Under 72 means your days look quite different from each other.",
             "Weekend drift: late Friday and Saturday nights are the most common culprit.",
+            "Bedtime and wake-time spread (± minutes) explains what's moving the score.",
         ),
         improve = listOf(
             "Pick a wake time you can keep 7 days a week, within 30 minutes.",
             "Start a wind-down alarm about 45 minutes before your target bedtime.",
             "If you're short on sleep, go to bed earlier rather than sleeping in.",
         ),
-        measured = "Circular standard deviation of bedtimes over the last 7–14 nights. This approximates the Sleep Regularity Index, which needs minute-level data.",
+        measured = "Sleep Regularity Index over the last 14 days: the chance you're in the same state (asleep or awake) at any minute and the same minute 24 hours later, scaled so 100 is perfectly regular and 0 is random. Built minute by minute from your sleep-stage timelines, naps included; needs at least 7 recorded days. Bedtime spread is the circular standard deviation of bedtimes.",
         reliability = Reliability.High,
+    )
+    Metric.Signals -> Story(
+        tagline = "Four overnight signals that tend to shift together when your body is under strain.",
+        why = "When you're coming down with something, several things change at once overnight: resting heart rate rises, breathing quickens, HRV drops and skin temperature drifts. Any one of them moves for ordinary reasons. Two or more out of their usual range for two nights in a row is a pattern worth listening to. Studies of wearables during COVID-19 and flu found this kind of shift often shows up a day or two before symptoms.",
+        lookFor = listOf(
+            "Two or more signals off for two nights running. That's when Baseline speaks up.",
+            "A single night is usually noise: a late meal, a drink, a hot room.",
+            "A hard workout the day before can tip the same signals. Baseline mentions it when that's likely.",
+        ),
+        improve = listOf(
+            "When signals are off, rest comes first: skip intensity, hydrate, and get to bed early.",
+            "Give it a day or two. If you feel unwell or it keeps going, talk to a doctor.",
+            "Wear your watch every night so your usual range stays accurate.",
+        ),
+        measured = "Each night is compared with your previous 28 nights (leaving out nights that were already off): resting HR at +1.5 SD or more, breathing at +1 breath/min or more, HRV (log scale) at −1 SD or less, and Zepp's skin-temperature score in your lowest 10%. Needs 14 nights of history. Not a diagnosis.",
+        reliability = Reliability.Medium,
+    )
+    Metric.HrvTrend -> Story(
+        tagline = "Your HRV smoothed over a week, plus how much it swings day to day.",
+        why = "A single night's HRV is noisy. The weekly average is a steadier read of how you're coping with training and life, and how much it bounces around adds a second clue. Sport scientists found that when the swings grow while the weekly average falls, fatigue is often building before you feel it.",
+        lookFor = listOf(
+            "The 7-day line inside your normal range: you're absorbing the load.",
+            "Swings (CV) rising while the line drifts down: time for a few easier days.",
+            "A line rising above your range after a rest week is a good sign.",
+        ),
+        improve = listOf(
+            "Wear the watch at least 3 nights a week; fewer than that and the weekly average isn't reliable.",
+            "Keep easy days truly easy, and bedtimes regular.",
+            "Back off for a few days when the fatigue note appears, then rebuild.",
+        ),
+        measured = "Mean of the last 7 nights' ln(HRV) (at least 3 nights), shown back in ms, against a band of ±0.5 SD from the 60 days before. CV = SD ÷ mean × 100 of the same 7 values, compared with its median over the previous 4 weeks.",
+        reliability = Reliability.Medium,
+    )
+    Metric.HrDip -> Story(
+        tagline = "The lowest your heart rate went last night, and when.",
+        why = "During good sleep your heart rate settles to its lowest point, usually in the first half of the night. Alcohol, a late heavy meal, late exercise or illness keep it higher for longer, so the low comes later or doesn't go as deep.",
+        lookFor = listOf(
+            "Early dips usually mean better recovery.",
+            "Late dips often follow alcohol or a late meal. That's a rule of thumb, not a certainty.",
+            "Your own pattern over weeks matters more than any single night.",
+        ),
+        improve = listOf(
+            "Finish eating about 3 hours before bed.",
+            "Keep alcohol early in the evening, or skip it on nights you want to recover.",
+            "Finish hard workouts a few hours before bedtime when you can.",
+        ),
+        measured = "The minimum of a 5-minute rolling average of your per-minute heart rate during the main sleep, sent by the bridge for recent nights; older nights use hourly minimums, timed to the nearest hour. The early/late reading is a heuristic.",
+        reliability = Reliability.Medium,
+    )
+    Metric.SleepNeed -> Story(
+        tagline = "How much sleep your body seems to want, and whether you're keeping up.",
+        why = "Most adults need 7–9 hours, but your own need sits somewhere specific in that range. On free days, without an alarm, you tend to sleep closer to what you need, so those nights are the best clue. Running short for several nights adds up, and it shows in mood, focus and recovery.",
+        lookFor = listOf(
+            "The shortfall line easing over two weeks means you're catching up.",
+            "A shortfall that keeps building is the cue for a couple of earlier nights.",
+            "Free days much longer than work days hint that weekday nights are too short.",
+        ),
+        improve = listOf(
+            "Go to bed 20–30 minutes earlier on work nights rather than sleeping in.",
+            "Short naps (under 30 minutes, before mid-afternoon) can help on short nights.",
+            "Keep your wake time steady; catch-up sleep works best as earlier bedtimes.",
+        ),
+        measured = "Need = median total sleep (main sleep plus naps) on free days, the nights ending Saturday or Sunday, over the last 14 nights; needs 3 such nights, otherwise your setting is used. Kept within 6h 30m–9h 30m. The chart is the shortfall against that need, summed over the previous 7 nights with data.",
+        reliability = Reliability.Medium,
+    )
+    Metric.SleepTiming -> Story(
+        tagline = "The middle of your night, and how far it moves on weekends.",
+        why = "The midpoint of your sleep is a simple marker of your body clock. When weekends run much later than weekdays, your body lives in two time zones. Researchers call this social jet lag, and it's linked to poorer mood, metabolic health and sleepiness on Mondays.",
+        lookFor = listOf(
+            "A weekend shift under an hour is easy on your body clock.",
+            "Over an hour, Monday mornings tend to feel like jet lag.",
+        ),
+        improve = listOf(
+            "Keep weekend wake-up within about an hour of your weekday time.",
+            "Get outdoor light soon after waking, especially on weekends.",
+            "If you're sleeping in to catch up, try an earlier bedtime on Thursday and Friday instead.",
+        ),
+        measured = "Midpoint = halfway between falling asleep and waking, for your main sleep. Social jet lag = average midpoint on free days (nights ending Saturday or Sunday) minus work days (Monday to Friday) over 28 nights, with at least 4 free and 8 work nights. Chronotype follows the MCTQ correction for catch-up sleep, adapted to watch data.",
+        reliability = Reliability.High,
+    )
+    Metric.Zones -> Story(
+        tagline = "How your training time splits between easy, steady-hard and hard.",
+        why = "Endurance fitness is built mostly on easy time, with a smaller amount of hard work on top. Seeing the split helps you notice weeks that drift into \"everything medium\", which tires you out without adding much fitness.",
+        lookFor = listOf(
+            "Plenty of easy time most weeks.",
+            "Some hard minutes if you're training for fitness. A little goes a long way.",
+            "There's no magic ratio for everyday exercisers. Elite 80/20 splits don't need copying.",
+        ),
+        improve = listOf(
+            "Slow your easy sessions down until talking in full sentences is comfortable.",
+            "Keep hard sessions short and clearly hard, then recover.",
+        ),
+        measured = "Heart-rate zone time from your workouts over the last 7 days: zones 1–2 = low, zone 3 = threshold, zones 4–5 = high. Wrist heart rate lags behind short intervals and can read low at high effort.",
+        reliability = Reliability.Medium,
+    )
+    Metric.Movement -> Story(
+        tagline = "A plain suggestion for today: how many minutes, and how hard.",
+        why = "Scores and strain targets are hard to act on. Baseline turns your recovery, your recent training and your weekly target into a simple range of minutes, so you can fit movement into the day without guessing.",
+        lookFor = listOf(
+            "Gentle and easy days are part of the plan, not a step back.",
+            "On well-recovered days with time to spare, the upper end is fair game.",
+            "Your own feeling counts too. If the suggestion doesn't match how you feel, go with your body.",
+        ),
+        improve = listOf(
+            "Walking counts. Brisk walks fill most easy days.",
+            "Spread the week's minutes over 3 or more days.",
+        ),
+        measured = "Readiness sets the base range (recover 10–20, easier 20–40, normal 30–60, primed 45–75 minutes). It drops a notch when this week's load is more than 1.3× your usual, and becomes \"up to 20 minutes gentle\" when your overnight signals are off. A rule of thumb, not a prescription.",
+        reliability = Reliability.Low,
     )
     Metric.Steps -> Story(
         tagline = "The simplest measure of how much you move.",
@@ -131,7 +244,7 @@ fun storyOf(m: Metric): Story = when (m) {
             "Take stairs, park far, get off one stop early. The small extras add up.",
             "Raise your goal by about 1,000 once you hit it most days.",
         ),
-        measured = "Counted by the watch's accelerometer, fused across devices by Zepp.",
+        measured = "Counted by the watch's accelerometer, fused across devices by Zepp. With your birth year in Settings, Baseline shows the age-based range where benefits level off (Paluch 2022): 8–10k under 60, 6–8k from 60.",
         reliability = Reliability.High,
     )
     Metric.Active -> Story(
@@ -161,7 +274,7 @@ fun storyOf(m: Metric): Story = when (m) {
             "Add one session of intervals, for example 4 × 4 minutes hard with 3 minutes easy between, once a week.",
             "Losing excess weight raises VO₂max per kg directly.",
         ),
-        measured = "Firstbeat-style estimate from heart-rate response to pace during outdoor activities.",
+        measured = "Firstbeat-style estimate from heart-rate response to pace during outdoor activities. With your birth year and sex in Settings, Baseline compares your 90-day median with FRIEND registry treadmill tests for your age group, as a percentile band covering ±3.5 mL/kg/min of watch error.",
         reliability = Reliability.Medium,
     )
     Metric.Load -> Story(

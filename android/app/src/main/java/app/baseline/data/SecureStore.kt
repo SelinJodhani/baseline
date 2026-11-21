@@ -45,6 +45,10 @@ data class AppSettings(
     val holdSleepScoreUntilAfternoon: Boolean = false,
     /** Gemini model used to read lab reports and InBody sheets (needs PDF / image input). */
     val geminiDocModel: String = "gemini-3.6-flash",
+    /** Optional, stays on this device: birth year, for age-based step goals and VO₂max percentiles. */
+    val birthYear: Int? = null,
+    /** Optional, stays on this device: "female", "male" or "" (not set). Only used for VO₂max percentiles. */
+    val sex: String = "",
 )
 
 /**

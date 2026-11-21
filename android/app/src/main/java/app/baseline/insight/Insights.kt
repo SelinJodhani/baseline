@@ -171,6 +171,12 @@ data class Insights(
     val feelMatch: FeelMatch? = null,
     /** Rest / Sick / Travel mode in force today; while set, targets are paused. */
     val mode: ModeSpan? = null,
+    /** The richer view behind [illnessFlag]: which overnight signals are off and for how many nights. */
+    val signalsOff: SignalsOff? = null,
+    /** Phase 3 metrics: SRI, sleep need and timing, HRV trend, overnight HR dip, zones, VO₂max band (Advanced.kt). */
+    val advanced: AdvancedInsights? = null,
+    /** Today's movement in plain minutes ("30–45 min easy today") for the Today screen. */
+    val movementRange: MovementRange? = null,
 )
 
 class InsightEngine(
@@ -194,6 +200,9 @@ class InsightEngine(
     val mainSleeps: Map<LocalDate, Sleep> by lazy {
         s.sleeps.groupBy { Instant.ofEpochSecond(it.end).atZone(zone).toLocalDate() }.mapValues { (_, v) -> v.maxBy { it.asleepMin } }
     }
+
+    /** Phase 3 metrics and their per-day series (insight/Advanced.kt). */
+    val advanced: AdvancedEngine by lazy { AdvancedEngine(s, settings, zone, today, mainSleeps) }
 
     /** Readiness as it would have been scored on [d] (for the history chart). Null when baselines are short. */
     fun readinessOn(d: LocalDate): Double? {
@@ -220,8 +229,9 @@ class InsightEngine(
         val rhr = signal(logSpace = false, higherIsBetter = false, minHalfWidth = 2.0, sdFloor = 1.0) { it.restingHr ?: it.sleepRhr }
         val resp = signal(logSpace = false, higherIsBetter = false, minHalfWidth = 0.5, sdFloor = 0.3) { it.respRate }
         val sleep = sleepInsight()
-        val illness = (rhr.z?.let { it <= -Rules.ILL_RHR_Z } ?: false) &&
-            resp.today != null && resp.baseline != null && resp.today - resp.baseline.mean >= Rules.ILL_RESP_DELTA
+        // "Signals off": ≥2 of 4 overnight signals out of band for 2 nights (Advanced.kt). Held back after a hard day.
+        val signalsOff = advanced.signalsOff
+        val illness = signalsOff.active && !signalsOff.afterHardTraining
         val readiness = readiness(hrv, rhr, sleep)
         val activity = activityInsight()
         val feel = journal.feelOn(today)
@@ -248,6 +258,9 @@ class InsightEngine(
             weightTrend = wTrend, weightWeeklyChange = wRate,
             daysOfData = s.days.count { it.restingHr != null || it.sleepHrv != null || it.steps != null },
             feel = feel, feelMatch = match, mode = mode,
+            signalsOff = signalsOff,
+            advanced = advanced.insights,
+            movementRange = movementRange(readiness.level, illness, activity.load?.ratio, activity.activeWeek, activity.activeGoal),
         )
     }
 
@@ -559,12 +572,12 @@ class InsightEngine(
         // Sick and travel days are expected to look off; the user already told us why.
         if (mode != null && mode.mode != LifeMode.Rest) return modeFocus(mode)
         if (ill) {
-            val dr = rhr.today?.let { t -> rhr.baseline?.let { t - it.mean } }
-            val db = resp.today?.let { t -> resp.baseline?.let { t - it.mean } }
+            // Non-diagnostic copy from the signals-off rule (Advanced.kt); rhr/resp stay in the signature for callers.
+            val so = advanced.signalsOff
+            val which = so.signals.joinToString(", ") { it.offText }.replaceFirstChar { it.uppercase() }
             return Focus(
-                "Your body is fighting something",
-                "Resting HR is up ${"%.0f".format(dr ?: 0.0)} bpm and breathing up ${"%.1f".format(db ?: 0.0)} breaths/min. " +
-                    "Skip intensity today, hydrate, and get to bed early.",
+                "Your signals are off",
+                "${so.message} $which for ${so.nights} nights.",
                 Focus.Kind.Sick, Level.Low,
             )
         }

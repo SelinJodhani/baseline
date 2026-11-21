@@ -66,6 +66,73 @@ class TransformTest(unittest.TestCase):
         self.assertEqual(self.s["freshness"]["lastReadingAt"], sl["end"])
 
 
+def _minutes(start_iso, n, value_at):
+    """n per-minute heart_rate rows from start_iso (UTC); value_at(i) -> bpm."""
+    import datetime as dt
+    t0 = dt.datetime.fromisoformat(start_iso)
+    return [{"metric": "heart_rate", "timestamp": (t0 + dt.timedelta(minutes=i)).isoformat(),
+             "value": float(value_at(i)), "unit": "bpm", "source_scope": "device"} for i in range(n)]
+
+
+class NadirTest(unittest.TestCase):
+    # Night 2026-01-01 23:00 → 2026-01-02 07:00 UTC (LONG fixture). Low of 48 bpm for 10 min from 02:00 (minute 180).
+    NIGHT = _minutes("2026-01-01T23:00:00+00:00", 480,
+                     lambda i: 48 if 180 <= i < 190 else (30 if i == 60 else 60))
+
+    def test_hr_readings_dedupes_and_filters(self):
+        rows = [
+            {"metric": "heart_rate", "timestamp": "2026-01-02T01:00:00+00:00", "value": 70.0, "source_scope": "user_fused"},
+            {"metric": "heart_rate", "timestamp": "2026-01-02T01:00:00+00:00", "value": 55.0, "source_scope": "device"},
+            {"metric": "heart_rate", "timestamp": "2026-01-02T01:01:00+00:00", "value": 0.0, "source_scope": "device"},
+            {"metric": "resting_hr", "timestamp": "2026-01-02T01:02:00+00:00", "value": 50.0, "source_scope": "device"},
+            {"metric": "heart_rate", "timestamp": "2026-01-02T01:03:00+00:00", "value": None},
+        ]
+        self.assertEqual(b.hr_readings(rows), [(1767315600, 55.0)])
+
+    def test_nadir_is_smoothed_low_and_its_time(self):
+        hr = b.hr_readings(self.NIGHT)
+        start, end = 1767308400, 1767337200  # 23:00 → 07:00 UTC
+        n = b.sleep_nadir(hr, [t for t, _ in hr], start, end)
+        self.assertEqual(n["bpm"], 48)              # the single 30-bpm glitch averages out
+        self.assertEqual((n["at"] - start) // 60, 182)  # middle of the first all-48 window
+        self.assertIsNone(b.sleep_nadir(hr[:20], [t for t, _ in hr[:20]], start, end))  # too few readings
+
+    def test_summary_attaches_hr_nadir_to_main_sleeps_only(self):
+        nap = {"start_time": "2026-01-02T13:00:00+00:00", "end_time": "2026-01-02T13:40:00+00:00", "duration_minutes": 35}
+        long_doc = {"data": dict(LONG["data"], sleep_sessions=LONG["data"]["sleep_sessions"] + [nap])}
+        hr_doc = {"data": {"metric_samples": self.NIGHT + _minutes("2026-01-02T13:00:00+00:00", 40, lambda i: 50)}}
+        s = b.build_summary(long_doc, SHORT, start="2026-01-01", end="2026-01-02", data_modified=None, hr_doc=hr_doc)
+        night, nap_out = s["sleeps"]
+        self.assertEqual(night["hrNadir"]["bpm"], 48)
+        self.assertNotIn("hrNadir", nap_out)
+        self.assertEqual(s["bridgeVersion"], "0.3.0")
+        # Nights that start before the per-minute export window get nothing (a partial night would mislead).
+        s2 = b.build_summary(long_doc, SHORT, start="2026-01-01", end="2026-01-02", data_modified=None,
+                             hr_doc=hr_doc, hr_from="2026-01-03")
+        self.assertNotIn("hrNadir", s2["sleeps"][0])
+        # No per-minute export at all: unchanged output.
+        self.assertNotIn("hrNadir", b.build_summary(LONG, SHORT, start="2026-01-01", end="2026-01-02", data_modified=None)["sleeps"][0])
+
+    def test_cache_survives_failed_hr_export(self):
+        def exporter(start, end, types):
+            return LONG if "sleep" in types else SHORT
+
+        def broken(start, end, types):
+            raise RuntimeError("boom")
+
+        calls = []
+
+        def hr(start, end, types):
+            calls.append((start, end, types))
+            return {"data": {"metric_samples": []}}
+
+        with tempfile.TemporaryDirectory() as d:
+            doc = json.loads(b.SummaryCache(exporter, d, hr_exporter=broken).get(30)[1])
+            self.assertEqual(doc["sleeps"][0]["durationMin"], 450)
+            b.SummaryCache(exporter, d, hr_exporter=hr).get(30)
+        self.assertEqual(calls[0][2], "heart_rate")
+
+
 class SyncTest(unittest.TestCase):
     def _job(self, exit_code, cooldown=0):
         d = tempfile.mkdtemp()

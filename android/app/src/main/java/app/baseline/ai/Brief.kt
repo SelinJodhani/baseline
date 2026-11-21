@@ -36,7 +36,7 @@ object BriefService {
         appendLine("Active minutes last 7 days: ${a.activeWeek} of ${a.activeGoal}. PAI: ${a.paiWeek?.roundToInt() ?: "n/a"}. Workouts this week: ${a.workoutsWeek.size}.")
         a.load?.let { appendLine("Training load: ${it.label} (7d ${it.acute.roundToInt()}, 42d ${it.chronic.roundToInt()}).") }
         a.vo2max?.let { appendLine("VO2max estimate: ${"%.1f".format(it)}.") }
-        if (i.illnessFlag) appendLine("Flag: resting HR and breathing rate both elevated vs normal (possible illness).")
+        if (i.illnessFlag) appendLine("Flag: ${i.signalsOff?.message ?: "several overnight signals are off for 2 nights (possible illness)"}")
         appendLine("App's rule-based focus for today: ${i.focus.title} — ${i.focus.body}")
     }
 

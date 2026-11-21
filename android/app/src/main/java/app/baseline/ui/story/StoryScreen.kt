@@ -117,7 +117,7 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit, onOpenSettings: ()
                     Metric.Steps -> m.settings.stepGoal.toDouble()
                     Metric.Sleep -> m.settings.sleepNeedMin / 60.0
                     Metric.Active -> m.settings.weeklyActiveGoal / 7.0
-                    Metric.Consistency -> 30.0
+                    Metric.Consistency -> 83.0 // SRI "regular" threshold
                     else -> null
                 }
                 var sel by remember(metric, days) { mutableStateOf<Int?>(null) }
