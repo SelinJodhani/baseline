@@ -79,19 +79,9 @@ class LabsViewModel(app: Application) : AndroidViewModel(app) {
             val text = LabExtractor.readText(getApplication(), uri)
             val r = withContext(Dispatchers.Default) { InBodyCsv.parse(text) }
             if (r.scans.isEmpty()) error("No scans with a date and body numbers were found in that file.")
-            var replaced = 0
-            store.update { d ->
-                undoScans = d.scans
-                // Re-importing replaces the same scans; a scan read earlier from a photo of the same test is replaced too.
-                val keep = d.scans.filterNot { old ->
-                    r.scans.any { n ->
-                        n.id == old.id || (n.date == old.date && old.source != "csv" &&
-                            (old.weightKg == null || n.weightKg == null || kotlin.math.abs(old.weightKg - n.weightKg) < 0.25))
-                    }
-                }
-                replaced = d.scans.size - keep.size
-                d.copy(scans = keep + r.scans)
-            }
+            var merge: ScanMerge? = null
+            store.update { d -> undoScans = d.scans; mergeScans(d.scans, r.scans).also { merge = it }.let { d.copy(scans = it.scans) } }
+            val replaced = merge?.replaced ?: 0
             val first = r.scans.first().date; val last = r.scans.last().date
             val skipped = listOfNotNull(
                 r.duplicates.takeIf { it > 0 }?.let { "$it duplicate ${if (it == 1) "row" else "rows"}" },
@@ -138,8 +128,19 @@ class LabsViewModel(app: Application) : AndroidViewModel(app) {
                     DocKind.InBody -> {
                         val x = LabExtractor.extractInBody(picked, s.geminiKey, model)
                         if (!x.isInBody) error("Couldn't find body composition results in that file. Try a clearer photo of the result sheet.")
-                        store.update { it.copy(scans = it.scans + x.scan) }
-                        UploadState.Done(kind, "Added the scan from ${LabDates.pretty(x.scan.date)}")
+                        var merge: ScanMerge? = null
+                        store.update { d -> undoScans = d.scans; mergeScans(d.scans, x.scans).also { merge = it }.let { d.copy(scans = it.scans) } }
+                        val mg = merge!!
+                        val n = x.scans.size
+                        UploadState.Done(
+                            kind,
+                            (if (n == 1) "Read the scan from ${LabDates.pretty(x.scan.date)}."
+                            else "Read $n scans from ${LabDates.pretty(x.scans.first().date)} to ${LabDates.pretty(x.scans.last().date)}.") +
+                                (if (mg.replaced > 0) " Updated ${mg.replaced} already here." else "") +
+                                (if (mg.kept > 0) " Kept ${mg.kept} from your CSV import, which has the exact numbers." else "") +
+                                (if (n == 1) " For your full history, import the CSV export from the InBody app." else ""),
+                            canUndo = true,
+                        )
                     }
                 }
             }.getOrElse { UploadState.Failed(kind, it.message ?: "Something went wrong") }

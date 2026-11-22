@@ -127,7 +127,8 @@ fun AddDocument(vm: LabsViewModel, data: LabsData, kind: DocKind, label: String,
             }
         }
     }
-    val types = if (kind == DocKind.InBody) arrayOf("application/pdf", "image/*", "text/csv", "text/comma-separated-values", "application/csv", "text/plain", "application/vnd.ms-excel", "text/*")
+    // "*/*" for InBody: phones often label a downloaded or shared CSV as a generic file, which a narrower list greys out.
+    val types = if (kind == DocKind.InBody) arrayOf("*/*")
         else arrayOf("application/pdf", "image/*")
     val launch = { picker.launch(types) }
     val working = upload is UploadState.Working

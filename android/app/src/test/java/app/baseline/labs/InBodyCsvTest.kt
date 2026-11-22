@@ -110,4 +110,31 @@ class InBodyCsvTest {
         val pts = Stats.timeEwmaAt(listOf(0L to 60.0, 74L * 86400 to 55.0), 10.0)
         assertEquals(55.0, pts.last().second, 0.01)
     }
+
+    @Test fun aiReadsEveryScanInAHistory() {
+        val text = """{"isInBodySheet": true, "scans": [
+            {"testDate": "2026-04-05", "weightKg": 59.1, "skeletalMuscleMassKg": 25.9, "percentBodyFat": 22.5},
+            {"testDate": "2026-08-23", "weightKg": 57.3, "skeletalMuscleMassKg": 25.7, "percentBodyFat": 19.6, "bmrKcal": 1366},
+            {"testDate": "2026-08-23", "weightKg": 57.3},
+            {"testDate": null, "weightKg": 50.0}
+        ]}"""
+        val x = LabExtractor.parseInBody(text, id = "t", today = java.time.LocalDate.of(2026, 11, 21), now = 0)
+        assertTrue(x.isInBody)
+        assertEquals("undated rows dropped, one per date", 2, x.scans.size)
+        assertEquals("2026-04-05", x.scans.first().date)
+        assertEquals("keeps the fuller entry for a date", 1366.0, x.scan.bmrKcal!!, 1e-9)
+        assertTrue(x.scans.map { it.id }.distinct().size == 2)
+    }
+
+    @Test fun mergeKeepsOnePerDateAndPrefersCsv() {
+        val csv = InBodyScan("inbody-csv-1", "2026-08-23", weightKg = 57.3, source = "csv")
+        val ai = InBodyScan("ai-1", "2026-08-23", weightKg = 57.0, source = "ai")
+        val other = InBodyScan("ai-2", "2026-07-25", weightKg = 58.0, source = "ai")
+        val m1 = mergeScans(listOf(csv), listOf(ai, other))
+        assertEquals(1, m1.kept); assertEquals(1, m1.added)
+        assertEquals(57.3, m1.scans.first { it.date == "2026-08-23" }.weightKg!!, 1e-9)
+        val m2 = mergeScans(listOf(ai), listOf(csv))
+        assertEquals(1, m2.replaced)
+        assertEquals("csv", m2.scans.single().source)
+    }
 }

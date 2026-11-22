@@ -80,6 +80,8 @@ data class ChartSetup(
     val goalLabel: String?,
     val zones: List<ChartZone>,
     val note: String? = null,
+    /** Bars grouped by week (long ranges): each value is that week's daily average, dated by its first day. */
+    val weekly: Boolean = false,
 ) {
     val count get() = values.count { it != null }
 }
@@ -91,11 +93,20 @@ fun chartSetup(m: Model, metric: Metric, days: Int, sp: Spec, h: HealthColors): 
     val raw = values(m, metric, days)
     // Start at the first reading (keeping at least a week) so a short history isn't squeezed into a corner.
     val from = raw.indexOfFirst { it != null }.let { if (it < 0) 0 else minOf(it, maxOf(0, raw.size - 7)) }
-    val vals = raw.drop(from)
-    val dates = m.engine.dates(days).drop(from)
+    var vals = raw.drop(from)
+    var dates = m.engine.dates(days).drop(from)
+    // Hundreds of daily bars read as a barcode: group long bar ranges into weeks (ending today).
+    val weekly = sp.bars && vals.size > 45
+    if (weekly) {
+        val chunks = vals.indices.reversed().chunked(7).reversed().map { it.reversed() }
+        dates = chunks.map { dates[it.first()] }
+        vals = chunks.map { idx -> idx.mapNotNull { vals[it] }.takeIf { it.isNotEmpty() }?.average() }
+    }
     val avg: List<Double?>? = when {
         metric == Metric.Weight -> interpolate(Stats.timeEwma(vals, WEIGHT_TAU_DAYS).mapIndexed { i, t -> t.takeIf { vals[i] != null } })
         sp.bars || metric in alreadySmoothed -> null
+        // Over a month or less every day is readable on its own; an average line only adds clutter.
+        vals.size <= 31 -> null
         else -> vals.indices.map { i -> vals.subList(maxOf(0, i - 6), i + 1).filterNotNull().takeIf { it.size >= 3 }?.average() }
     }?.takeIf { a -> a.count { it != null } >= 2 }
     val adv = m.insights.advanced ?: m.engine.advanced.insights
@@ -128,6 +139,7 @@ fun chartSetup(m: Model, metric: Metric, days: Int, sp: Spec, h: HealthColors): 
         goal = goal, goalLabel = goalLabel,
         zones = zonesFor(metric, h, m),
         note = note,
+        weekly = weekly,
     )
 }
 
@@ -148,7 +160,7 @@ const val WEIGHT_TAU_DAYS = 10.0
 /** The legend under a chart: only what's actually drawn. */
 fun ChartSetup.legend(metric: Metric, sp: Spec): List<LegendKey> = buildList {
     val c = sp.color
-    if (sp.bars) add(LegendKey(KeyKind.Bar, c, dailyName(metric)))
+    if (sp.bars) add(LegendKey(KeyKind.Bar, c, if (weekly) "Average per day, by week" else dailyName(metric)))
     else add(LegendKey(if (average != null) KeyKind.Dot else KeyKind.Line, c, dailyName(metric)))
     averageLabel?.let { add(LegendKey(KeyKind.Line, c, it)) }
     bandLabel?.let { add(LegendKey(KeyKind.Band, c, it)) }
@@ -171,14 +183,14 @@ private fun dailyName(metric: Metric) = when (metric) {
 fun ChartSetup.tooltip(i: Int, sp: Spec): String {
     val d = dates.getOrNull(i) ?: return ""
     val v = values.getOrNull(i)
-    val head = "${Fmt.weekdayShort(d)} ${Fmt.dayMonth(d)}"
+    val head = if (weekly) "Week of ${Fmt.dayMonth(d)}" else "${Fmt.weekdayShort(d)} ${Fmt.dayMonth(d)}"
     if (v == null) return "$head\nNo reading"
     val unit = if (sp.unit.isBlank() || sp.unit == "off") "" else " ${sp.unit}"
     val where = zones.takeIf { it.isNotEmpty() }?.labelFor(v)
         ?: band?.let { b -> when { v > b.endInclusive -> "above your normal"; v < b.start -> "below your normal"; else -> "in your normal range" } }
         ?: goal?.let { g -> if (v >= g) "goal met" else null }
     val avg = average?.getOrNull(i)?.let { "${averageLabel ?: "Average"} ${sp.format(it)}" }
-    return listOfNotNull(head, listOfNotNull("${sp.format(v)}$unit", where).joinToString(" · "), avg).joinToString("\n")
+    return listOfNotNull(head, listOfNotNull("${sp.format(v)}$unit${if (weekly) " a day" else ""}", where?.takeIf { !weekly || it != "goal met" } ?: if (weekly && goal != null && v >= goal) "goal met on average" else null).joinToString(" · "), avg).joinToString("\n")
 }
 
 /** What the number itself means, in plain words. */

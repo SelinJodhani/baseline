@@ -122,7 +122,7 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit, onOpenSettings: ()
                     Spacer(Modifier.height(4.dp))
                     TrendChart(
                         values = setup.values, color = sp.color,
-                        labels = ChartLabels(dates.map { if (dates.size <= 14) "${Fmt.weekday(it)}\n${it.dayOfMonth}" else Fmt.dayMonth(it) }, sp.format),
+                        labels = ChartLabels(dates.map { if (dates.size <= 14 && !setup.weekly) "${Fmt.weekday(it)}\n${it.dayOfMonth}" else Fmt.dayMonth(it) }, sp.format),
                         average = setup.average, band = setup.band, bandLabel = setup.bandLabel,
                         goal = setup.goal, goalLabel = setup.goalLabel, zones = setup.zones, bars = sp.bars,
                         tooltip = { i -> setup.tooltip(i, sp) },
@@ -136,7 +136,7 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit, onOpenSettings: ()
                             PeriodStat("Average", st.avg?.let(sp.format), Modifier.weight(1f))
                             PeriodStat("Low", st.low?.let(sp.format), Modifier.weight(1f))
                             PeriodStat("High", st.high?.let(sp.format), Modifier.weight(1f))
-                            PeriodStat("Days", "${st.withData}/${st.total}", Modifier.weight(1f))
+                            PeriodStat(if (setup.weekly) "Weeks" else "Days", "${st.withData}/${st.total}", Modifier.weight(1f))
                         }
                     }
                     setup.note?.let {

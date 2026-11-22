@@ -130,6 +130,27 @@ data class LabsData(
         reportsByDate.mapNotNull { r -> r.markers.firstOrNull { it.key == key }?.let { r to it } }
 }
 
+/** What [mergeScans] did. */
+data class ScanMerge(val scans: List<InBodyScan>, val added: Int, val replaced: Int, val kept: Int)
+
+/**
+ * One scan per date. An incoming scan replaces a stored one with the same id or date, except that a scan from
+ * InBody's CSV (exact numbers) is never replaced by one read by AI — that one is skipped ([ScanMerge.kept]).
+ */
+fun mergeScans(existing: List<InBodyScan>, incoming: List<InBodyScan>): ScanMerge {
+    val out = existing.toMutableList()
+    var added = 0; var replaced = 0; var kept = 0
+    incoming.forEach { n ->
+        val i = out.indexOfFirst { it.id == n.id || it.date == n.date }
+        when {
+            i < 0 -> { out += n; added++ }
+            out[i].source == "csv" && n.source != "csv" -> kept++
+            else -> { out[i] = n; replaced++ }
+        }
+    }
+    return ScanMerge(out, added, replaced, kept)
+}
+
 object LabDates {
     private val patterns = listOf("yyyy-MM-dd", "dd/MM/yyyy", "dd-MM-yyyy", "dd.MM.yyyy", "dd-MMM-yyyy", "dd MMM yyyy", "d MMM yyyy", "MMM d, yyyy", "MMMM d, yyyy", "yyyy/MM/dd")
         .map { DateTimeFormatter.ofPattern(it, Locale.ENGLISH) }

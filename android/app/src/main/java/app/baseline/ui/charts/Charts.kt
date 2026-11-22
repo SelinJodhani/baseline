@@ -262,8 +262,9 @@ fun TrendChart(
             else -> left + inset + i / (n - 1f) * w
         }
     }
+    val railRoom = if (zones.isNotEmpty()) 10f * dens else 0f
     fun nearest(x: Float, left: Float, width: Float): Int =
-        (0 until n).minByOrNull { abs(plotX(it, left, width) - x) } ?: 0
+        (0 until n).minByOrNull { abs(plotX(it, left, width - railRoom) - x) } ?: 0
 
     Canvas(
         modifier
@@ -295,23 +296,32 @@ fun TrendChart(
         val h = size.height - bottom - top
         val data = values.filterNotNull() + (average?.filterNotNull() ?: emptyList())
         val (lo, hi) = chartRange(data, band, goal, zones, zeroBased)
-        fun x(i: Int) = plotX(i, left, size.width)
         fun y(v: Double) = (top + h - ((v - lo) / (hi - lo) * h)).toFloat()
-        val plotRight = size.width
 
-        // Named zones (behind everything), labelled at the right edge.
+        // Named zones: a thin coloured rail on the right edge plus a hairline at each boundary, so the plot stays clean.
+        val rail = 4.dp.toPx()
+        val plotRight = if (zones.isNotEmpty()) size.width - rail - 6.dp.toPx() else size.width
+        val zoneLabels = mutableListOf<Pair<androidx.compose.ui.text.TextLayoutResult, Offset>>()
         zones.forEach { z ->
             val a = max(z.from, lo); val b = min(z.to, hi)
             if (b <= a) return@forEach
-            drawRect(z.color.copy(alpha = .08f), Offset(left, y(b)), Size(plotRight - left, y(a) - y(b)))
-            val tm = measurer.measure(z.label, labelStyle.copy(color = z.color, fontSize = 10.sp))
-            if (y(a) - y(b) >= tm.size.height + 2) drawText(tm, topLeft = Offset(plotRight - tm.size.width - 4.dp.toPx(), y(b) + 2.dp.toPx()))
+            drawRoundRect(z.color.copy(alpha = .75f), Offset(size.width - rail, y(b) + 1f), Size(rail, (y(a) - y(b) - 2f).coerceAtLeast(1f)), CornerRadius(rail / 2))
+            if (z.from > lo && z.from < hi) {
+                drawLine(z.color.copy(alpha = .45f), Offset(left, y(z.from)), Offset(plotRight, y(z.from)), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 4.dp.toPx())))
+            }
+            val tm = measurer.measure(z.label, labelStyle.copy(color = z.color, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium))
+            if (y(a) - y(b) >= tm.size.height + 4) {
+                val px = 5.dp.toPx(); val py = 1.dp.toPx()
+                val bx = plotRight - tm.size.width - px * 2; val by = y(b) + 3.dp.toPx()
+                zoneLabels += tm to Offset(bx, by)
+            }
         }
-        // Grid on round values.
+        fun x(i: Int) = plotX(i, left, plotRight)
+        // Grid on round values: quiet solid hairlines.
         niceTicks(lo, hi).forEach { v ->
             val yy = y(v)
             if (yy < top - 1 || yy > top + h + 1) return@forEach
-            drawLine(grid, Offset(left, yy), Offset(plotRight, yy), 1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 8f)))
+            drawLine(grid, Offset(left, yy), Offset(plotRight, yy), 1f)
             val tm = measurer.measure(labels.format(v), labelStyle)
             drawText(tm, topLeft = Offset((left - tm.size.width - 6.dp.toPx()).coerceAtLeast(0f), yy - tm.size.height / 2))
         }
@@ -319,7 +329,7 @@ fun TrendChart(
         if (labels.x.isNotEmpty()) {
             val widest = labels.x.maxOf { t -> t.split('\n').maxOf { measurer.measure(it, labelStyle).size.width } }
             val room = (plotRight - left) / labels.x.size
-            val step = max(1, kotlin.math.ceil((widest + 8.dp.toPx()) / room).toInt())
+            val step = max(1, kotlin.math.ceil((widest * 1.15f + 6.dp.toPx()) / room).toInt())
             val last = labels.x.lastIndex
             for (i in labels.x.indices) {
                 if ((last - i) % step != 0) continue
@@ -345,17 +355,38 @@ fun TrendChart(
                 drawRoundRect(c, Offset(x(i) - bw / 2, yy), Size(bw, (y(lo) - yy).coerceAtLeast(2f)), CornerRadius(bw / 2.5f))
             }
         } else {
-            val dot = 2.6.dp.toPx()
-            values.forEachIndexed { i, v -> v?.let { drawCircle(color.copy(alpha = if (average != null) .45f else 1f), dot, Offset(x(i), y(it))) } }
-            clipRevealRect(left, p) {
-                val line = average ?: values
-                runs(line).forEach { run ->
-                    if (run.size > 1) drawPath(
-                        smoothPath(run.map { Offset(x(it.first), y(it.second)) }), color,
-                        style = Stroke(3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-                    )
+            val avgLine = average?.takeIf { a -> a.count { it != null } >= 2 }
+            if (avgLine != null) {
+                // Long range: faint daily dots, bold average.
+                values.forEachIndexed { i, v -> v?.let { drawCircle(color.copy(alpha = .35f), 2.dp.toPx(), Offset(x(i), y(it))) } }
+                clipRevealRect(left, p) {
+                    runs(avgLine).forEach { run ->
+                        if (run.size > 1) drawPath(smoothPath(run.map { Offset(x(it.first), y(it.second)) }), color, style = Stroke(3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                    }
+                }
+            } else {
+                // Short range: one clear line through each day, a soft fill, and visible points.
+                clipRevealRect(left, p) {
+                    runs(values).forEach { run ->
+                        val pts = run.map { Offset(x(it.first), y(it.second)) }
+                        if (pts.size > 1) {
+                            val path = smoothPath(pts)
+                            if (n <= 60) {
+                                val fill = Path().apply { addPath(path); lineTo(pts.last().x, top + h); lineTo(pts.first().x, top + h); close() }
+                                drawPath(fill, color.copy(alpha = .10f))
+                            }
+                            drawPath(path, color, style = Stroke((if (n <= 60) 2.5 else 1.8).dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                        } else if (n > 45) drawCircle(color, 2.dp.toPx(), pts[0])
+                    }
+                    if (n <= 45) values.forEachIndexed { i, v -> v?.let { drawCircle(color, 3.dp.toPx(), Offset(x(i), y(it))) } }
                 }
             }
+            // The latest reading, ringed.
+            (avgLine ?: values).let { line -> line.indices.lastOrNull { line[it] != null }?.let { i ->
+                val c = Offset(x(i), y(line[i]!!))
+                drawCircle(color.copy(alpha = .25f), 7.dp.toPx() * p, c)
+                drawCircle(color, 4.dp.toPx() * p, c)
+            } }
         }
         goal?.let { g ->
             val gy = y(g)
@@ -366,9 +397,15 @@ fun TrendChart(
                 val bw = tm.size.width + padX * 2; val bh = tm.size.height + padY * 2
                 val bx = plotRight - bw
                 val by = if (gy - bh - 2 >= top) gy - bh - 2 else gy + 2
-                drawRoundRect(pillBg, Offset(bx, by), Size(bw, bh), CornerRadius(bh / 2))
+                drawRoundRect(pillBg.copy(alpha = .85f), Offset(bx, by), Size(bw, bh), CornerRadius(bh / 2))
                 drawText(tm, topLeft = Offset(bx + padX, by + padY))
             }
+        }
+        // Zone names on top of the data so the line never hides them.
+        zoneLabels.forEach { (tm, o) ->
+            val px = 5.dp.toPx(); val py = 1.dp.toPx()
+            drawRoundRect(pillBg.copy(alpha = .9f), o, Size(tm.size.width + px * 2, tm.size.height + py * 2), CornerRadius(6.dp.toPx()))
+            drawText(tm, topLeft = Offset(o.x + px, o.y + py))
         }
         sel?.let { i ->
             val xx = x(i)
@@ -461,18 +498,22 @@ fun Hypnogram(
         val span = (t1 - t0).coerceAtLeast(1).toFloat()
         fun x(t: Long) = (t - t0) / span * size.width
         val barH = laneH * .62f
+        // Faint lane guides, then each stage as a block in its lane. Adjacent blocks of the same stage are joined and
+        // blocks get a minimum width, so a restless stretch reads as a band rather than a mess of hairlines.
+        lanes.indices.forEach { i ->
+            val cy = i * laneH + laneH / 2
+            drawLine(colors[lanes[i]]?.copy(alpha = .12f) ?: Color.Gray, Offset(0f, cy), Offset(size.width, cy), 1.dp.toPx())
+        }
+        val merged = mutableListOf<Triple<Long, Long, String>>()
+        stages.forEach { s -> val last = merged.lastOrNull(); if (last != null && last.third == s.third && s.first - last.second <= 60) merged[merged.lastIndex] = Triple(last.first, s.second, s.third) else merged += s }
         clipReveal(p) {
-            var prev: Pair<Float, Float>? = null
-            stages.forEach { (a, b, st) ->
+            val minW = 2.5.dp.toPx()
+            merged.forEach { (a, b, st) ->
                 val lane = lanes.indexOf(st).coerceAtLeast(0)
                 val c = colors[st] ?: Color.Gray
                 val yTop = lane * laneH + (laneH - barH) / 2
-                val xa = x(a); val xb = max(x(b), xa + 1.5f)
-                prev?.let { (px, py) ->
-                    drawLine(c.copy(alpha = .35f), Offset(px, py), Offset(xa, yTop + barH / 2), 1.5f)
-                }
-                drawRoundRect(c, Offset(xa, yTop), Size(xb - xa, barH), CornerRadius(barH / 3))
-                prev = xb to yTop + barH / 2
+                val xa = x(a); val xb = max(x(b), xa + minW)
+                drawRoundRect(c, Offset(xa, yTop), Size(xb - xa, barH), CornerRadius(minOf(barH / 3, (xb - xa) / 2)))
             }
         }
         val style = TextStyle(fontSize = 11.sp, color = labelColor)
