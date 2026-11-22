@@ -2,16 +2,20 @@
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
     <!-- Heart line: a two-tone heart cut by a flat line — your heart back at its baseline.
-         Material product-icon style: one bold geometric glyph, flat tonal facets, inside the 66dp safe zone.
+         Material product-icon style: one bold geometric glyph, flat tonal facets. Drawn on the 108dp grid and scaled
+         by 72/108, so on the launcher (which shows the central 72dp) the heart keeps the mockup's proportions:
+         about half the icon's width, with a generous white margin.
          The line is a true gap (clip), so the glyph works on any background. -->
-    <group>
-        <clip-path android:pathData="M0,0 H108 V51 H0 Z" />
-        <path android:fillColor="#FFE8604C" android:pathData="M54,80 C30,64 26,52 26,44 C26,34 34,28 42,28 C48,28 52,31 54,35 Z" />
-        <path android:fillColor="#FFF28B78" android:pathData="M54,80 C78,64 82,52 82,44 C82,34 74,28 66,28 C60,28 56,31 54,35 Z" />
-    </group>
-    <group>
-        <clip-path android:pathData="M0,59 H108 V108 H0 Z" />
-        <path android:fillColor="#FFE8604C" android:pathData="M54,80 C30,64 26,52 26,44 C26,34 34,28 42,28 C48,28 52,31 54,35 Z" />
-        <path android:fillColor="#FFF28B78" android:pathData="M54,80 C78,64 82,52 82,44 C82,34 74,28 66,28 C60,28 56,31 54,35 Z" />
+    <group android:pivotX="54" android:pivotY="54" android:scaleX="0.667" android:scaleY="0.667">
+        <group>
+            <clip-path android:pathData="M0,0 H108 V51 H0 Z" />
+            <path android:fillColor="#FFE8604C" android:pathData="M54,80 C30,64 26,52 26,44 C26,34 34,28 42,28 C48,28 52,31 54,35 Z" />
+            <path android:fillColor="#FFF28B78" android:pathData="M54,80 C78,64 82,52 82,44 C82,34 74,28 66,28 C60,28 56,31 54,35 Z" />
+        </group>
+        <group>
+            <clip-path android:pathData="M0,59 H108 V108 H0 Z" />
+            <path android:fillColor="#FFE8604C" android:pathData="M54,80 C30,64 26,52 26,44 C26,34 34,28 42,28 C48,28 52,31 54,35 Z" />
+            <path android:fillColor="#FFF28B78" android:pathData="M54,80 C78,64 82,52 82,44 C82,34 74,28 66,28 C60,28 56,31 54,35 Z" />
+        </group>
     </group>
 </vector>
