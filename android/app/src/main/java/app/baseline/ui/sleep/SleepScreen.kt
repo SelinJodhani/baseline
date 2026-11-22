@@ -25,6 +25,10 @@ import app.baseline.insight.InsightEngine
 import app.baseline.insight.Level
 import app.baseline.ui.common.KeyValue
 import app.baseline.ui.charts.ChartLabels
+import app.baseline.ui.charts.ChartLegend
+import app.baseline.ui.charts.KeyKind
+import app.baseline.ui.charts.LegendKey
+import app.baseline.ui.story.hoursDifferent
 import app.baseline.ui.charts.Hypnogram
 import app.baseline.ui.charts.SleepWindows
 import app.baseline.ui.charts.StackBar
@@ -103,10 +107,16 @@ fun SleepScreen(m: Model, onRefresh: () -> Unit, onMetric: (Metric) -> Unit) {
             SectionCard(onClick = { onMetric(Metric.Sleep) }) {
                 CardHeader("Last 14 nights", Icons.Rounded.CalendarMonth, h.sleep, trailing = s.avg7Min?.let { "avg ${Fmt.duration(it.roundToInt())}" }, chevron = true)
                 Spacer(Modifier.height(12.dp))
-                TrendChart(values, h.sleep, ChartLabels(dates.map { Fmt.weekday(it) }) { "%.0fh".format(it) }, bars = true, goal = s.needMin / 60.0)
+                TrendChart(
+                    values, h.sleep, ChartLabels(dates.map { "${Fmt.weekday(it)}\n${it.dayOfMonth}" }) { "%.0fh".format(it) },
+                    bars = true, goal = s.needMin / 60.0, goalLabel = "Need ${Fmt.duration(s.needMin)}",
+                    tooltip = { i -> "${Fmt.weekdayShort(dates[i])} ${Fmt.dayMonth(dates[i])}\n" + (mains[dates[i]]?.let { n -> "${Fmt.duration(n.asleepMin)} asleep · ${Fmt.clock(n.start, zone)}–${Fmt.clock(n.end, zone)}" } ?: "No sleep recorded") },
+                )
                 Spacer(Modifier.height(10.dp))
+                ChartLegend(listOf(LegendKey(KeyKind.Bar, h.sleep, "Hours asleep (solid = need met)"), LegendKey(KeyKind.Dash, h.sleep, "Your need (Settings)")))
+                Spacer(Modifier.height(8.dp))
                 Text(
-                    if (s.debt7Min >= 60) "${Fmt.duration(s.debt7Min)} short over the last 7 nights." else "No meaningful sleep debt this week.",
+                    if (s.debt7Min >= 60) "${Fmt.duration(s.debt7Min)} short of your ${Fmt.duration(s.needMin)} need over the last 7 nights." else "No meaningful sleep debt this week.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
@@ -126,19 +136,29 @@ fun SleepScreen(m: Model, onRefresh: () -> Unit, onMetric: (Metric) -> Unit) {
                 CardHeader("Rhythm", Icons.Rounded.Schedule, h.sleep, trailing = adv.sri.value?.let { "${it.roundToInt()} / 100" } ?: spread, chevron = true)
                 Spacer(Modifier.height(12.dp))
                 SleepWindows(
-                    windows, dates.map { Fmt.weekday(it) }, h.sleep,
+                    windows, dates.map { "${Fmt.weekday(it)}\n${it.dayOfMonth}" }, h.sleep,
                     targetBed = s.suggestedBedtime?.let { (it.hour * 60 + it.minute - 18 * 60).let { v -> if (v < 0) v + 1440 else v }.toFloat() },
+                    targetLabel = s.suggestedBedtime?.let { "Bed by ${InsightEngine.fmtTime(it)}" },
+                    tooltip = { i -> mains[dates[i]]?.let { n -> "${Fmt.weekdayShort(dates[i])} ${Fmt.dayMonth(dates[i])}\n${Fmt.clock(n.start, zone)} → ${Fmt.clock(n.end, zone)}" } ?: "" },
                 )
                 Spacer(Modifier.height(10.dp))
-                if (adv.sri.value != null && spread != null) {
+                ChartLegend(listOfNotNull(
+                    LegendKey(KeyKind.Bar, h.sleep, "Fell asleep → woke up (tap a night)"),
+                    s.suggestedBedtime?.let { LegendKey(KeyKind.Dash, h.sleep, "Tonight's bedtime") },
+                ))
+                Spacer(Modifier.height(10.dp))
+                adv.sri.value?.let { v ->
                     Text(
-                        "Regularity ${adv.sri.value.roundToInt()} / 100 · " + when (adv.sri.level) { Level.Great -> "regular"; Level.Good -> "fairly regular"; else -> "irregular" } + " · bedtime moves $spread",
+                        "Regularity ${v.roundToInt()} / 100 · " + when (adv.sri.level) { Level.Great -> "regular"; Level.Good -> "fairly regular"; else -> "irregular" } +
+                            ". About ${hoursDifferent(v)} of each day differs from the day before (83+ is regular).",
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(4.dp))
                 }
+                if (spread != null) Text("Bedtime moves $spread night to night.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(4.dp))
                 Text(
-                    s.suggestedBedtime?.let { "Tonight, aim to be in bed by ${InsightEngine.fmtTime(it)} (dashed line)." } ?: "A few more nights are needed to suggest a bedtime.",
+                    s.suggestedBedtime?.let { "Tonight, aim to be in bed by ${InsightEngine.fmtTime(it)} to get your ${Fmt.duration(s.needMin)} before your usual wake time." } ?: "A few more nights are needed to suggest a bedtime.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
@@ -151,7 +171,7 @@ fun SleepScreen(m: Model, onRefresh: () -> Unit, onMetric: (Metric) -> Unit) {
                 CardHeader("Need & timing", Icons.Rounded.Bedtime, h.sleep, chevron = true)
                 Spacer(Modifier.height(14.dp))
                 Row {
-                    KeyValue(if (need.estimated) "Your need" else "Need (setting)", Fmt.duration(need.needMin), Modifier.weight(1f))
+                    KeyValue(if (need.estimated) "Free-day sleep" else "Need (setting)", Fmt.duration(need.needMin), Modifier.weight(1f))
                     KeyValue("Midpoint", t.midpointMin?.let { m -> ((m.roundToInt() % 1440 + 1440) % 1440).let { InsightEngine.fmtTime(LocalTime.of(it / 60, it % 60)) } } ?: "—", Modifier.weight(1f))
                     KeyValue("Weekends", t.socialJetLagMin?.let { j -> if (abs(j) < 30) "Same" else "${if (j > 0) "+" else "−"}${Fmt.duration(abs(j).roundToInt())}" } ?: "—", Modifier.weight(1f))
                 }
@@ -162,7 +182,7 @@ fun SleepScreen(m: Model, onRefresh: () -> Unit, onMetric: (Metric) -> Unit) {
                         DebtTrend.Steady -> "Your 7-night shortfall is about the same as the week before."
                         DebtTrend.Building -> "Your 7-night shortfall is building. An earlier night or two will help."
                         DebtTrend.Unknown -> if (need.estimated) "Estimated from your free-day sleep over the last two weeks." else "Baseline estimates your need once it has a few free-day nights."
-                    },
+                    } + if (need.estimated && abs(need.needMin - s.needMin) >= 20) " On free days you sleep about ${Fmt.duration(need.needMin)}; the target in Settings is ${Fmt.duration(s.needMin)}." else "",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }

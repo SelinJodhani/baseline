@@ -1,5 +1,6 @@
 package app.baseline.ai
 
+import androidx.compose.material3.IconButton
 import android.content.Context
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -16,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -70,6 +72,7 @@ fun AiCard(
     footer: String = "Written by Gemini from a summary of your numbers. Not medical advice.",
 ) {
     val cs = MaterialTheme.colorScheme
+    var collapsed by rememberSaveable(title) { mutableStateOf(false) }
     val clickable = ready && state is AiState.Idle
     Surface(
         shape = MaterialTheme.shapes.large,
@@ -86,10 +89,14 @@ fun AiCard(
                 Spacer(Modifier.width(10.dp))
                 Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 when {
+                    collapsed -> TextButton(onClick = { collapsed = false }) { Text("Show") }
                     state is AiState.Loading -> CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                     clickable -> Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = cs.onSurfaceVariant)
+                    state is AiState.Done || state is AiState.Error ->
+                        IconButton(onClick = { collapsed = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Rounded.Close, "Hide", tint = cs.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
                 }
             }
+            if (collapsed) return@Column
             if (!ready) {
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {

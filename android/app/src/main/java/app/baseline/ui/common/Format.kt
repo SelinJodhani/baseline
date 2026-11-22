@@ -42,5 +42,8 @@ object Fmt {
         }
     }
 
-    fun workoutName(type: String): String = type.replace('_', ' ').replaceFirstChar { it.uppercase() }
+    fun workoutName(type: String): String = when {
+        type.isBlank() || type.startsWith("unknown") -> "Workout"
+        else -> type.replace('_', ' ').replace(':', ' ').trim().replaceFirstChar { it.uppercase() }
+    }
 }

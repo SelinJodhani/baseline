@@ -22,12 +22,14 @@ Then it gives you **one thing to do today**.
 
 - **Today:** readiness as one word (Push, Ready, Easy, Recover) with what drove it, a one-tap "How do you feel?" that softens the advice when you disagree, one focus sentence, and sleep and movement at a glance. Tap the score for a plain-language "why".
 - **A story for every metric:** your personal takeaway, an interactive trend with your normal range, *why it matters*, *what to look for* and *how to improve*. Each story is based on the research in [docs/RESEARCH.md](docs/RESEARCH.md).
+- **Charts you can read:** every line, band and target is labelled, scores show their named zones (for example Irregular / Fairly regular / Regular), tap any day for a tooltip, and **How to read** explains what the number means with small diagrams.
 - **Body:** every signal in one quiet list, including an early "signals off" warning, the Sleep Regularity Index, sleep need and social jet lag, HRV trend, overnight heart-rate low, time in zones and a suggested movement range for today.
 - **Widgets:** six flat Material You widgets in their own shapes (circle, capsule, squircle, scalloped) for the home screen and, where supported, the lock screen, which shows words only. Add them in one tap from Settings.
 - **Fresh data on demand:** if your data is stale, Today tells you why: the watch syncs to the Zepp cloud only through the Zepp app. One tap opens Zepp, and **Sync now** pulls the cloud right away.
 - **Built-in updates:** new versions install from GitHub Releases, checksum-verified.
-- **Lab reports and InBody (AI):** add a blood-test PDF or photo, or an InBody result sheet. Gemini reads the values, and Baseline shows each biomarker's trend against its range, with a plain summary. Only the extracted values are kept, encrypted on your phone.
-- **Optional AI, your own key:** a morning brief, plus "Explain my …" on every metric page. Only short digests of your numbers are sent.
+- **Lab reports:** add a blood-test PDF or photo and Gemini reads the values. Out-of-range results are highlighted and grouped at the top, each result shows where it sits in its range, and you can search, filter by category or range, and open one report at a time. Only the extracted values are kept, encrypted on your phone.
+- **Body composition (InBody):** import the CSV export from the InBody app (read on the phone, no AI) to get every scan on one timeline, with what changed in fat versus lean mass, segment balance, and the change from scan to scan. PDFs and photos of result sheets work too, read by AI.
+- **Optional AI, your own key:** a morning brief (close it to hide it for the day, or turn it off), plus "Explain my …" on every metric page. Only short digests of your numbers are sent.
 - **Comfort settings:** calm mode (words instead of numbers), rest, sick and travel modes that pause targets, and confidence labels whenever data is thin.
 - **Material You:** follows your wallpaper colours, with light and dark themes and no gradients.
 - **Private by design:** no accounts, analytics or cloud. The token is encrypted with the Android Keystore, and nothing goes into backups.

@@ -115,14 +115,28 @@ const val MEDICAL_DISCLAIMER = "Baseline is not a medical device and doesn't dia
 @Composable
 fun AddDocument(vm: LabsViewModel, data: LabsData, kind: DocKind, label: String, onOpenSettings: () -> Unit, upload: UploadState) {
     var ask by rememberSaveable { mutableStateOf<String?>(null) } // "setup" | "consent"
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { vm.upload(it, kind) } }
-    val launch = { picker.launch(arrayOf("application/pdf", "image/*")) }
+    var pending by rememberSaveable { mutableStateOf<android.net.Uri?>(null) }
+    // InBody files are picked first (a CSV export needs no AI); lab reports always go through AI.
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        vm.picked(uri, kind) { u ->
+            when {
+                !vm.aiReady -> { pending = u; ask = "setup" }
+                !data.consent -> { pending = u; ask = "consent" }
+                else -> vm.upload(u, kind)
+            }
+        }
+    }
+    val types = if (kind == DocKind.InBody) arrayOf("application/pdf", "image/*", "text/csv", "text/comma-separated-values", "application/csv", "text/plain", "application/vnd.ms-excel", "text/*")
+        else arrayOf("application/pdf", "image/*")
+    val launch = { picker.launch(types) }
     val working = upload is UploadState.Working
 
     Column {
         FilledTonalButton(
             onClick = {
                 when {
+                    kind == DocKind.InBody -> launch()
                     !vm.aiReady -> ask = "setup"
                     !data.consent -> ask = "consent"
                     else -> launch()
@@ -145,7 +159,7 @@ fun AddDocument(vm: LabsViewModel, data: LabsData, kind: DocKind, label: String,
                 Spacer(Modifier.height(8.dp))
                 LinearProgressIndicator(Modifier.fillMaxWidth())
             }
-            is UploadState.Done -> if (upload.kind == kind) StatusLine(upload.message, error = false) { vm.dismissUpload() }
+            is UploadState.Done -> if (upload.kind == kind) StatusLine(upload.message, error = false, onUndo = if (upload.canUndo) ({ vm.undoImport() }) else null) { vm.dismissUpload() }
             is UploadState.Failed -> if (upload.kind == kind) StatusLine(upload.message, error = true) { vm.dismissUpload() }
             UploadState.Idle -> {}
         }
@@ -155,9 +169,14 @@ fun AddDocument(vm: LabsViewModel, data: LabsData, kind: DocKind, label: String,
         "setup" -> AlertDialog(
             onDismissRequest = { ask = null },
             title = { Text("Set up AI first") },
-            text = { Text("Reading a ${if (kind == DocKind.Lab) "lab report" else "result sheet"} uses Google Gemini with your own API key. Turn on AI and add a key in Settings.") },
-            confirmButton = { TextButton(onClick = { ask = null; onOpenSettings() }) { Text("Open Settings") } },
-            dismissButton = { TextButton(onClick = { ask = null }) { Text("Not now") } },
+            text = {
+                Text(
+                    "Reading a ${if (kind == DocKind.Lab) "lab report" else "PDF or photo of a result sheet"} uses Google Gemini with your own API key. Turn on AI and add a key in Settings." +
+                        if (kind == DocKind.InBody) "\n\nNo AI needed for InBody's CSV export: in the InBody app, export your results and pick the .csv file here." else "",
+                )
+            },
+            confirmButton = { TextButton(onClick = { ask = null; pending = null; onOpenSettings() }) { Text("Open Settings") } },
+            dismissButton = { TextButton(onClick = { ask = null; pending = null }) { Text("Not now") } },
         )
         "consent" -> AlertDialog(
             onDismissRequest = { ask = null },
@@ -169,14 +188,19 @@ fun AddDocument(vm: LabsViewModel, data: LabsData, kind: DocKind, label: String,
                         "results anywhere else.\n\nNames and ID numbers aren't needed, so feel free to crop them out first.",
                 )
             },
-            confirmButton = { TextButton(onClick = { ask = null; vm.giveConsent(); launch() }) { Text("Agree and choose file") } },
-            dismissButton = { TextButton(onClick = { ask = null }) { Text("Cancel") } },
+            confirmButton = {
+                TextButton(onClick = {
+                    ask = null; vm.giveConsent()
+                    pending?.let { vm.upload(it, kind); pending = null } ?: launch()
+                }) { Text(if (pending != null) "Agree and read it" else "Agree and choose file") }
+            },
+            dismissButton = { TextButton(onClick = { ask = null; pending = null }) { Text("Cancel") } },
         )
     }
 }
 
 @Composable
-private fun StatusLine(text: String, error: Boolean, onDismiss: () -> Unit) {
+private fun StatusLine(text: String, error: Boolean, onUndo: (() -> Unit)? = null, onDismiss: () -> Unit) {
     Spacer(Modifier.height(10.dp))
     Surface(shape = MaterialTheme.shapes.medium, color = if (error) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer) {
         Row(Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -184,6 +208,7 @@ private fun StatusLine(text: String, error: Boolean, onDismiss: () -> Unit) {
                 text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
                 color = if (error) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer,
             )
+            onUndo?.let { TextButton(onClick = it) { Text("Undo") } }
             IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Dismiss", modifier = Modifier.size(18.dp)) }
         }
     }

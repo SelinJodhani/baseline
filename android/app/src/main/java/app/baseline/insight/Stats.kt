@@ -29,6 +29,34 @@ object Stats {
         }
     }
 
+    /**
+     * Time-aware EWMA over a daily series (index = day): each reading pulls the trend by 1 − e^(−gap/τ), so
+     * sparse readings after a long gap aren't drowned by stale history. Days before the first reading stay null.
+     */
+    fun timeEwma(daily: List<Double?>, tauDays: Double): List<Double?> {
+        var s: Double? = null
+        var lastIdx = -1
+        return daily.mapIndexed { i, x ->
+            if (x != null) {
+                s = s?.let { prev -> prev + (1 - exp(-(i - lastIdx) / tauDays)) * (x - prev) } ?: x
+                lastIdx = i
+            }
+            s
+        }
+    }
+
+    /** Same as [timeEwma] for irregular timestamps (epoch seconds). */
+    fun timeEwmaAt(points: List<Pair<Long, Double>>, tauDays: Double): List<Pair<Long, Double>> {
+        var s: Double? = null
+        var lastT = 0L
+        return points.sortedBy { it.first }.map { (t, x) ->
+            val gap = if (s == null) 0.0 else (t - lastT) / 86400.0
+            s = s?.let { prev -> prev + (1 - exp(-gap.coerceAtLeast(0.0) / tauDays)) * (x - prev) } ?: x
+            lastT = t
+            t to s!!
+        }
+    }
+
     fun alphaForTimeConstant(days: Double) = 1 - exp(-1 / days)
 
     fun lnOrNull(x: Double?): Double? = x?.takeIf { it > 0 }?.let { ln(it) }

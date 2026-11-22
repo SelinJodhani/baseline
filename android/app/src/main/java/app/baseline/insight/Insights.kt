@@ -644,11 +644,14 @@ class InsightEngine(
         )
     }
 
-    /** Hacker's-Diet style trend: EWMA with ~10-weigh-in smoothing; weekly change from the last 14 days. */
+    /**
+     * Hacker's-Diet style trend, but time-aware (τ = 10 days) so a weigh-in after a long gap isn't drowned by stale
+     * history; weekly change from the last 14 days.
+     */
     private fun weightTrend(): Pair<List<Pair<Long, Double>>, Double?> {
         val ws = s.weights.sortedBy { it.t }
         if (ws.isEmpty()) return emptyList<Pair<Long, Double>>() to null
-        val trend = Stats.ewma(ws.map { it.kg }, 0.1).mapIndexed { i, v -> ws[i].t to v!! }
+        val trend = Stats.timeEwmaAt(ws.map { it.t to it.kg }, 10.0)
         val cutoff = ws.last().t - 14 * 86400
         val recent = trend.filter { it.first >= cutoff }
         val rate = if (recent.size >= 3) (recent.last().second - recent.first().second) /

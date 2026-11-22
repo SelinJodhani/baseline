@@ -25,6 +25,7 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.DirectionsWalk
 import androidx.compose.material.icons.rounded.FitnessCenter
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SelfImprovement
 import androidx.compose.material.icons.rounded.Settings
@@ -100,7 +101,9 @@ fun TodayScreen(
         item { app.baseline.update.UpdateBanner() }
         if (mode != null) item { ModeBanner(mode, m, onOff = { vm.setMode(null) }) }
         item { Hero(m, onWhy = { showWhy = true }, onFeel = { vm.setFeel(it) }, onTakeItEasy = { showModes = true }) }
-        if (m.settings.aiEnabled && m.settings.geminiKey.isNotBlank()) item { BriefCard(m) }
+        if (m.settings.aiEnabled && m.settings.geminiKey.isNotBlank() && m.settings.briefOnToday && m.settings.briefHiddenOn != m.insights.today.toString()) item {
+            BriefCard(m, onHide = { vm.update { it.copy(briefHiddenOn = m.insights.today.toString()) } })
+        }
         item {
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SleepTile(m, Modifier.weight(1f).fillMaxHeight()) { onTab(1) }
@@ -212,7 +215,7 @@ private fun Hero(m: Model, onWhy: () -> Unit, onFeel: (Feel?) -> Unit, onTakeItE
 }
 
 @Composable
-private fun BriefCard(m: Model) {
+private fun BriefCard(m: Model, onHide: () -> Unit) {
     val ctx = LocalContext.current
     val date = m.insights.today.toString()
     var brief by remember(date) { mutableStateOf<Brief?>(BriefService.cached(ctx, date)) }
@@ -236,7 +239,8 @@ private fun BriefCard(m: Model) {
                 Spacer(Modifier.width(8.dp))
                 Text("Your brief", style = MaterialTheme.typography.titleSmall, color = cs.onSecondaryContainer, modifier = Modifier.weight(1f))
                 if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = cs.onSecondaryContainer)
-                else IconButton(onClick = { run() }, modifier = Modifier.size(28.dp)) { Icon(Icons.Rounded.Refresh, "Regenerate", tint = cs.onSecondaryContainer, modifier = Modifier.size(18.dp)) }
+                else IconButton(onClick = { run() }, modifier = Modifier.size(32.dp)) { Icon(Icons.Rounded.Refresh, "Regenerate", tint = cs.onSecondaryContainer, modifier = Modifier.size(18.dp)) }
+                IconButton(onClick = onHide, modifier = Modifier.size(32.dp)) { Icon(Icons.Rounded.Close, "Hide for today", tint = cs.onSecondaryContainer, modifier = Modifier.size(18.dp)) }
             }
             Spacer(Modifier.height(8.dp))
             AnimatedVisibility(brief != null || error != null) {
@@ -247,6 +251,10 @@ private fun BriefCard(m: Model) {
                 )
             }
             if (brief == null && error == null && !busy) TextButton(onClick = { run() }) { Text("Write today's brief") }
+            if (brief != null) Text(
+                "Hidden until tomorrow if you close it. Turn it off in Settings → AI.",
+                style = MaterialTheme.typography.labelSmall, color = cs.onSecondaryContainer.copy(alpha = .7f), modifier = Modifier.padding(top = 8.dp),
+            )
         }
     }
 }

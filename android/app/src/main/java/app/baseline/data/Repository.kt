@@ -229,6 +229,10 @@ class Repository(private val context: Context, private val store: SecureStore) {
             is java.net.SocketTimeoutException -> "The bridge took too long to answer"
             is javax.net.ssl.SSLException -> "TLS problem: ${t.message ?: "certificate not trusted"}"
             is kotlinx.serialization.SerializationException -> "The bridge sent data this app can't read — update both"
+            is java.io.EOFException -> "The connection dropped before the bridge answered — is it running? Try again."
+            is java.io.IOException -> if (t.message.orEmpty().contains("end of stream", true) || t.message.orEmpty().contains("reset", true))
+                "The connection dropped before the bridge answered — is it running? Try again."
+            else t.message?.takeIf { "@" !in it } ?: "Network problem — check your connection and try again."
             is IllegalArgumentException -> t.message ?: "Invalid URL"
             else -> t.message ?: t.javaClass.simpleName
         }

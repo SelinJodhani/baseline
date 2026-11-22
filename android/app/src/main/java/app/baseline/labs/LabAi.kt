@@ -21,7 +21,7 @@ object LabAi {
         else -> "no range printed"
     }
 
-    private fun line(m: LabMarker) = "${m.name}: ${fmtNum(m.value)} ${m.unit} (${range(m)}; ${m.labFlag.name.lowercase()})".replace("  ", " ")
+    private fun line(m: LabMarker) = "${m.name}: ${fmtNum(m.value)} ${m.unit} (${range(m)}; ${m.status.name.lowercase()})".replace("  ", " ")
 
     fun markerPrompt(data: LabsData, key: String): String = buildString {
         val h = data.history(key)
@@ -62,11 +62,15 @@ object LabAi {
             s.bmrKcal?.let { "BMR ${fmtNum(it)} kcal" },
             s.ecwTbw?.let { "ECW/TBW ${fmtNum(it)}" },
             s.inBodyScore?.let { "InBody score ${fmtNum(it)}" },
+            s.smi?.let { "SMI ${fmtNum(it)} kg/m²" },
+            s.proteinKg?.let { "protein ${fmtNum(it)} kg" },
+            s.waistHipRatio?.let { "waist-hip ratio ${fmtNum(it)}" },
         ).joinToString(", ")
         appendLine("Latest (${LabDates.monthYear(latest.date)}): ${scanLine(latest)}.")
         if (scans.size > 1) appendLine("Previous (${LabDates.monthYear(scans[scans.size - 2].date)}): ${scanLine(scans[scans.size - 2])}.")
         if (scans.size > 2) appendLine("First (${LabDates.monthYear(scans.first().date)}): ${scanLine(scans.first())}.")
-        if (latest.segmentalLean.isNotEmpty()) appendLine("Segmental lean, % of normal: " + latest.segmentalLean.joinToString(", ") { "${it.part} ${it.percent?.let(::fmtNum) ?: "?"}" } + ".")
+        if (scans.size > 3) appendLine("All scans, oldest first: " + scans.joinToString("; ") { s -> "${LabDates.monthYear(s.date)} ${s.weightKg?.let { "${fmtNum(it)} kg" } ?: "?"}, ${s.percentBodyFat?.let { "${fmtNum(it)}% fat" } ?: "?"}, ${s.skeletalMuscleKg?.let { "${fmtNum(it)} kg muscle" } ?: "?"}" } + ".")
+        if (latest.segmentalLean.isNotEmpty()) appendLine("Segmental lean: " + latest.segmentalLean.joinToString(", ") { seg -> "${seg.part} " + listOfNotNull(seg.kg?.let { "${fmtNum(it)} kg" }, seg.percent?.let { "${fmtNum(it)}% of normal" }).joinToString(" ") } + ".")
     }
 
     fun reportKey(r: LabReport) = "report:${r.id}"

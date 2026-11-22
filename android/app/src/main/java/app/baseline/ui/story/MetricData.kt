@@ -104,6 +104,17 @@ fun values(m: Model, metric: Metric, days: Int): List<Double?> {
     }
 }
 
+/** The current numeric value, for the scale marker in the chart guide. */
+fun currentValue(m: Model, metric: Metric): Double? {
+    val adv = m.insights.advanced ?: m.engine.advanced.insights
+    return when (metric) {
+        Metric.Consistency -> adv.sri.value
+        Metric.Readiness -> m.insights.readiness.score?.toDouble()
+        Metric.Stress -> m.insights.stressToday
+        else -> values(m, metric, 7).lastOrNull { it != null }
+    }
+}
+
 data class Now(val value: String, val unit: String, val status: String, val level: Level)
 
 /** The headline value + one-word status for a metric. */
@@ -153,8 +164,13 @@ fun now(m: Model, metric: Metric, sp: Spec): Now {
         }
         Metric.Spo2 -> lv(i.spo2Score, i.nightBreathingLevel, when (i.nightBreathingLevel) { Level.Good, Level.Great -> "Normal"; Level.Fair -> "Worth watching"; Level.Low -> "Frequent dips"; else -> "No reading" })
         Metric.Weight -> {
-            val t = i.weightTrend.lastOrNull()?.second
-            Now(t?.let(sp.format) ?: "—", "kg trend", i.weightWeeklyChange?.let { "%+.2f kg / week".format(it) } ?: "", Level.Unknown)
+            val t = i.weightTrend.lastOrNull()
+            val age = t?.let { (System.currentTimeMillis() / 1000 - it.first) / 86400 }
+            Now(t?.second?.let(sp.format) ?: "—", "kg trend", when {
+                t == null -> "No weigh-ins yet"
+                age != null && age > 14 -> "Last weigh-in ${Fmt.dayMonth(Instant.ofEpochSecond(t.first).atZone(i.zone).toLocalDate())}"
+                else -> i.weightWeeklyChange?.let { "%+.2f kg / week".format(it) } ?: "From your weigh-ins"
+            }, Level.Unknown)
         }
         Metric.Signals -> {
             val so = i.signalsOff ?: adv.signalsOff
@@ -245,7 +261,8 @@ fun takeaway(m: Model, metric: Metric, sp: Spec): String {
                 "Sleep regularity needs at least 7 recorded days in the last two weeks (${sri.validDays} so far).", spread,
             ).joinToString(" ")
             else listOfNotNull(
-                "Your sleep timing was ${sri.value.roundToInt()}/100 regular over the last ${sri.validDays} days.",
+                "Your sleep timing scored ${sri.value.roundToInt()}/100 over the last ${sri.validDays} days: about ${hoursDifferent(sri.value)} of each day was spent differently (asleep vs awake) from the day before." +
+                    when (sri.level) { Level.Great -> ""; Level.Good -> " 83 is where \"regular\" starts."; else -> " Under 72 counts as irregular; 83 is regular." },
                 spread,
                 if (sri.level == Level.Great) "That's a well-anchored body clock." else "Anchoring your wake time, weekends included, is the quickest win.",
             ).joinToString(" ")
@@ -273,8 +290,21 @@ fun takeaway(m: Model, metric: Metric, sp: Spec): String {
         }
         Metric.Load -> i.activity.load?.let { "This week's load is ${it.label.lowercase()}: ${"%.0f".format(it.acute)} vs your usual ${"%.0f".format(it.chronic)}." }
             ?: "Log a few workouts with heart rate and this fills in."
-        Metric.Weight -> i.weightWeeklyChange?.let { "Your trend is ${if (it < 0) "falling" else "rising"} ${"%.2f".format(abs(it))} kg a week. ${if (abs(it) > 1) "That's faster than is usually sustainable." else ""}".trim() }
-            ?: "Weigh in a few more times to see a trend."
+        Metric.Weight -> {
+            val tr = i.weightTrend
+            val last = m.data.summary?.weights?.maxByOrNull { it.t }
+            if (tr.isEmpty() || last == null) "Weigh in a few times to see a trend."
+            else buildString {
+                append("Latest weigh-in ${sp.format(last.kg)} kg on ${Fmt.dayMonth(Instant.ofEpochSecond(last.t).atZone(i.zone).toLocalDate())}.")
+                val ago = tr.lastOrNull { it.first <= tr.last().first - 90 * 86400 } ?: tr.first().takeIf { tr.last().first - it.first >= 21 * 86400 }
+                ago?.let { (t0, v0) ->
+                    val d = tr.last().second - v0
+                    val weeks = ((tr.last().first - t0) / 86400 / 7).coerceAtLeast(1)
+                    append(if (abs(d) < 0.3) " Your trend is steady over the last $weeks weeks." else " Your trend is ${if (d < 0) "down" else "up"} ${"%.1f".format(abs(d))} kg over the last $weeks weeks.")
+                }
+                i.weightWeeklyChange?.let { if (abs(it) > 1) append(" That recent pace is faster than is usually sustainable.") }
+            }
+        }
         Metric.Signals -> {
             val so = i.signalsOff ?: adv.signalsOff
             val last = so.latest
@@ -359,6 +389,12 @@ fun takeaway(m: Model, metric: Metric, sp: Spec): String {
             }
         }
     }
+}
+
+/** SRI → hours a day spent in a different state from the day before: (100 − SRI) / 200 × 24. */
+fun hoursDifferent(sri: Double): String {
+    val min = ((100 - sri).coerceAtLeast(0.0) / 200 * 24 * 60).roundToInt()
+    return if (min < 60) "$min min" else InsightEngine.fmtDuration((min / 15.0).roundToInt() * 15).replace("h 00m", "h")
 }
 
 @Composable

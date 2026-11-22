@@ -182,6 +182,27 @@ object LabExtractor {
         Picked(bytes, if (mime == "image/jpg") "image/jpeg" else mime)
     }
 
+    private val CSV_MIMES = setOf("text/csv", "text/comma-separated-values", "application/csv", "text/plain", "application/vnd.ms-excel", "text/tab-separated-values")
+
+    /** True for a CSV/text export (InBody's app exports CSV), decided by type or file name. */
+    suspend fun isCsv(ctx: Context, uri: Uri): Boolean = withContext(Dispatchers.IO) {
+        val mime = ctx.contentResolver.getType(uri)?.lowercase().orEmpty()
+        val name = ctx.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }.orEmpty().lowercase()
+        mime in CSV_MIMES || name.endsWith(".csv") || name.endsWith(".tsv") || (mime.startsWith("text/") && !mime.contains("html"))
+    }
+
+    /** Read a small text file (≤ 5 MB) as a string, honouring a UTF-16 byte-order mark. */
+    suspend fun readText(ctx: Context, uri: Uri): String = withContext(Dispatchers.IO) {
+        val size = ctx.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null }
+        if (size != null && size > 5L * 1024 * 1024) throw IllegalArgumentException("That file is over 5 MB — is it the right export?")
+        val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IllegalArgumentException("Couldn't open that file")
+        when {
+            bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte() -> String(bytes, 2, bytes.size - 2, Charsets.UTF_16LE)
+            bytes.size >= 2 && bytes[0] == 0xFE.toByte() && bytes[1] == 0xFF.toByte() -> String(bytes, 2, bytes.size - 2, Charsets.UTF_16BE)
+            else -> bytes.decodeToString()
+        }
+    }
+
     private fun guessMime(uri: Uri, ctx: Context): String {
         val name = ctx.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
             ?: uri.lastPathSegment.orEmpty()

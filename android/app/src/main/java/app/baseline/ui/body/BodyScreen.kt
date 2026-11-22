@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.baseline.Model
 import app.baseline.insight.Level
+import app.baseline.ui.charts.MiniBars
 import app.baseline.ui.charts.Sparkline
 import app.baseline.ui.common.RefreshablePage
 import app.baseline.ui.common.ScreenTitle
@@ -75,7 +76,8 @@ private fun MetricRow(m: Model, metric: Metric, onClick: () -> Unit) {
     val h = Brand.health
     val sp = spec(metric, h)
     val n = now(m, metric, sp)
-    val trend = remember(m, metric) { values(m, metric, 21) }
+    // Start at the first reading so a short history fills the sparkline instead of hugging its right edge.
+    val trend = remember(m, metric) { values(m, metric, 21).let { v -> v.drop(v.indexOfFirst { it != null }.coerceIn(0, maxOf(0, v.size - 7))) } }
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -90,10 +92,11 @@ private fun MetricRow(m: Model, metric: Metric, onClick: () -> Unit) {
                 Text(n.status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        if (!sp.bars) {
-            Sparkline(trend, sp.color, Modifier.width(64.dp).height(28.dp))
+        if (trend.count { it != null } >= 2) {
+            if (sp.bars) MiniBars(trend.takeLast(14), sp.color, Modifier.width(64.dp).height(28.dp))
+            else Sparkline(trend, sp.color, Modifier.width(64.dp).height(28.dp))
             Spacer(Modifier.width(14.dp))
-        }
+        } else Spacer(Modifier.width(78.dp))
         Column(horizontalAlignment = Alignment.End, modifier = Modifier.width(76.dp)) {
             Text(n.value, style = MaterialTheme.typography.titleLarge.merge(Numeric), fontWeight = FontWeight.Bold, maxLines = 1)
             if (n.unit.isNotBlank()) Text(n.unit, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)

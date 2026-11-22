@@ -33,6 +33,9 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.automirrored.rounded.HelpOutline
+import app.baseline.ui.charts.ChartLegend
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -99,61 +102,55 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit, onOpenSettings: ()
             }
             item {
                 val days = ranges[rangeIdx].first
-                // Start the chart at the first reading (keeping at least a week) so a short history
-                // isn't squeezed against the right edge of a mostly empty month or year.
-                val raw = remember(m, metric, days) { values(m, metric, days) }
-                val from = remember(raw) { raw.indexOfFirst { it != null }.let { if (it < 0) 0 else minOf(it, maxOf(0, raw.size - 7)) } }
-                val vals = remember(raw, from) { raw.drop(from) }
-                val dates = remember(m, days, from) { m.engine.dates(days).drop(from) }
-                val trimmed = from > 0
-                val avg = remember(vals) {
-                    when {
-                        metric == Metric.Weight -> Stats.ewma(vals, 0.1)
-                        sp.bars -> null
-                        else -> vals.indices.map { i -> vals.subList(maxOf(0, i - 6), i + 1).filterNotNull().takeIf { it.size >= 3 }?.average() }
-                    }
-                }
-                val band = when (metric) {
-                    Metric.Hrv -> m.insights.hrv.baseline?.let { it.low..it.high }
-                    Metric.RestingHr -> m.insights.rhr.baseline?.let { it.low..it.high }
-                    Metric.Breathing -> m.insights.resp.baseline?.let { it.low..it.high }
-                    Metric.Readiness -> 62.0..80.0
-                    else -> null
-                }
-                val goal = when (metric) {
-                    Metric.Steps -> m.settings.stepGoal.toDouble()
-                    Metric.Sleep -> m.settings.sleepNeedMin / 60.0
-                    Metric.Active -> m.settings.weeklyActiveGoal / 7.0
-                    Metric.Consistency -> 83.0 // SRI "regular" threshold
-                    else -> null
-                }
-                var sel by remember(metric, days) { mutableStateOf<Int?>(null) }
+                val setup = remember(m, metric, days) { chartSetup(m, metric, days, sp, h) }
+                val dates = setup.dates
+                var guide by rememberSaveable(metric) { mutableStateOf(false) }
                 SectionCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            sel?.let { i -> "${Fmt.weekdayShort(dates[i])} ${Fmt.dayMonth(dates[i])}  ·  ${vals.getOrNull(i)?.let(sp.format) ?: "no data"} ${sp.unit}" }
-                                ?: if (trimmed) "Since ${Fmt.dayMonth(dates.first())}  ·  all your data so far"
-                                else "Last ${ranges[rangeIdx].second.lowercase().let { if (it == "1y") "year" else if (it == "3m") "3 months" else if (it == "1m") "month" else "2 weeks" }}",
+                            if (setup.trimmed) "Since ${Fmt.dayMonth(dates.first())}  ·  all your data so far"
+                            else "Last ${when (days) { 365 -> "year"; 90 -> "3 months"; 30 -> "month"; else -> "2 weeks" }}",
                             style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
                         )
+                        TextButton(onClick = { guide = true }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                            Icon(Icons.AutoMirrored.Rounded.HelpOutline, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("How to read")
+                        }
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(4.dp))
                     TrendChart(
-                        values = vals, color = sp.color,
-                        labels = ChartLabels(dates.map { if (dates.size <= 14) Fmt.weekdayShort(it) else Fmt.dayMonth(it) }, sp.format),
-                        average = avg, band = band, goal = goal, bars = sp.bars, onSelect = { sel = it },
+                        values = setup.values, color = sp.color,
+                        labels = ChartLabels(dates.map { if (dates.size <= 14) "${Fmt.weekday(it)}\n${it.dayOfMonth}" else Fmt.dayMonth(it) }, sp.format),
+                        average = setup.average, band = setup.band, bandLabel = setup.bandLabel,
+                        goal = setup.goal, goalLabel = setup.goalLabel, zones = setup.zones, bars = sp.bars,
+                        tooltip = { i -> setup.tooltip(i, sp) },
                     )
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(10.dp))
+                    ChartLegend(setup.legend(metric, sp))
+                    val st = setup.stats()
+                    if (st.withData >= 2 && metric != Metric.SleepTiming) {
+                        Spacer(Modifier.height(14.dp))
+                        Row(Modifier.fillMaxWidth()) {
+                            PeriodStat("Average", st.avg?.let(sp.format), Modifier.weight(1f))
+                            PeriodStat("Low", st.low?.let(sp.format), Modifier.weight(1f))
+                            PeriodStat("High", st.high?.let(sp.format), Modifier.weight(1f))
+                            PeriodStat("Days", "${st.withData}/${st.total}", Modifier.weight(1f))
+                        }
+                    }
+                    setup.note?.let {
+                        Spacer(Modifier.height(10.dp))
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Spacer(Modifier.height(14.dp))
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                         ranges.forEachIndexed { i, (_, l) ->
                             SegmentedButton(selected = rangeIdx == i, onClick = { rangeIdx = i }, shape = SegmentedButtonDefaults.itemShape(i, ranges.size), icon = {}) { Text(l) }
                         }
                     }
-                    if (band != null && metric != Metric.Readiness) {
-                        Spacer(Modifier.height(10.dp))
-                        Text("Shaded: your normal range (previous ${Rules.BASELINE_DAYS} days). Line: 7-day average.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
                 }
+                if (guide) ChartGuideSheet(m, metric, sp, setup, currentValue(m, metric), onDismiss = { guide = false })
             }
             if (metric == Metric.RestingHr) item {
                 val zone = m.insights.zone
@@ -182,6 +179,14 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit, onOpenSettings: ()
         }
         StatusBarScrim()
       }
+    }
+}
+
+@Composable
+private fun PeriodStat(label: String, value: String?, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value ?: "—", style = MaterialTheme.typography.titleMedium.merge(Numeric), fontWeight = FontWeight.SemiBold)
     }
 }
 

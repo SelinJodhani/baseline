@@ -39,8 +39,13 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 
 private suspend fun Animatable<Float, *>.grow() = animateTo(1f, tween(900, easing = FastOutSlowInEasing))
 
@@ -170,9 +175,48 @@ private inline fun DrawScope.clipReveal(progress: Float, block: DrawScope.() -> 
 
 data class ChartLabels(val x: List<String>, val format: (Double) -> String)
 
+/** A named horizontal zone, e.g. "Regular" for 83–100. Drawn faintly behind the data. */
+data class ChartZone(val from: Double, val to: Double, val label: String, val color: Color)
+
+/** 3–5 round axis values inside [lo, hi] (steps of 1, 2 or 5 × 10ⁿ). */
+fun niceTicks(lo: Double, hi: Double, target: Int = 4): List<Double> {
+    val span = hi - lo
+    if (span <= 1e-9 || span.isNaN()) return listOf(lo)
+    val raw = span / target
+    val mag = 10.0.pow(floor(log10(raw)))
+    val step = listOf(1.0, 2.0, 5.0, 10.0).map { it * mag }.first { it >= raw * 0.999 }
+    val out = mutableListOf<Double>()
+    var v = ceil(lo / step - 1e-9) * step
+    while (v <= hi + step * 1e-6 && out.size < 12) {
+        out += if (abs(v) < step * 1e-6) 0.0 else v
+        v += step
+    }
+    return out
+}
+
+/** The y-range a chart shows: data, average, band and goal; zone edges only when close to the data. */
+internal fun chartRange(
+    data: List<Double>, band: ClosedFloatingPointRange<Double>?, goal: Double?, zones: List<ChartZone>, zeroBased: Boolean,
+): Pair<Double, Double> {
+    var lo = data.min(); var hi = data.max()
+    goal?.let { lo = min(lo, it); hi = max(hi, it) }
+    band?.let { lo = min(lo, it.start); hi = max(hi, it.endInclusive) }
+    val base = (hi - lo).coerceAtLeast(maxOf(abs(hi) * 0.05, 1e-3))
+    zones.flatMap { listOf(it.from, it.to) }.distinct()
+        .filter { it > lo - base * .8 && it < hi + base * .8 }
+        .forEach { lo = min(lo, it); hi = max(hi, it) }
+    if (zeroBased) lo = min(0.0, lo)
+    val span = (hi - lo).coerceAtLeast(maxOf(abs(hi) * 0.05, 1e-3))
+    if (!zeroBased) lo -= span * .12
+    hi += span * .14
+    if (lo < 0 && data.all { it >= 0 } && (band?.start ?: 0.0) >= 0) lo = 0.0
+    return lo to hi
+}
+
 /**
- * The main trend chart: daily dots + smoothed average line + personal normal band + goal line,
- * with drag-to-inspect. [onSelect] reports the inspected index (null when released).
+ * The main trend chart: daily dots + average line + personal band + labelled goal line + named zones, with
+ * tap/drag-to-inspect and a tooltip. [positions] (0..1 per value) spaces irregular dates by real time.
+ * [onSelect] reports the inspected index (null when released).
  */
 @Composable
 fun TrendChart(
@@ -182,34 +226,61 @@ fun TrendChart(
     modifier: Modifier = Modifier,
     average: List<Double?>? = null,
     band: ClosedFloatingPointRange<Double>? = null,
+    bandLabel: String? = null,
     goal: Double? = null,
+    goalLabel: String? = null,
+    zones: List<ChartZone> = emptyList(),
     bars: Boolean = false,
     zeroBased: Boolean = bars,
+    positions: List<Float>? = null,
+    tooltip: ((Int) -> String)? = null,
+    height: Dp = 220.dp,
     onSelect: (Int?) -> Unit = {},
 ) {
     val measurer = rememberTextMeasurer()
     val p = rememberGrow(values.hashCode())
-    var sel by remember { mutableStateOf<Int?>(null) }
-    val onSurface = MaterialTheme.colorScheme.onSurfaceVariant
-    val grid = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f)
+    var sel by remember(values.size) { mutableStateOf<Int?>(null) }
+    val cs = MaterialTheme.colorScheme
+    val onSurface = cs.onSurfaceVariant
+    val grid = cs.outlineVariant.copy(alpha = .5f)
+    val tipBg = cs.inverseSurface
+    val tipFg = cs.inverseOnSurface
+    val pillBg = cs.surfaceContainerLow
     val labelStyle = TextStyle(fontSize = 11.sp, color = onSurface)
+    val n = values.size
+    val pos = positions?.takeIf { it.size == n }
+    val dens = androidx.compose.ui.platform.LocalDensity.current.density
+
+    // Geometry shared by drawing and touch handling.
+    fun plotX(i: Int, left: Float, width: Float): Float {
+        val inset = 10f * dens
+        val w = width - left - 2 * inset
+        return when {
+            bars -> left + (width - left) / n * (i + .5f)
+            pos != null -> left + inset + pos[i].coerceIn(0f, 1f) * w
+            n <= 1 -> left + (width - left) / 2
+            else -> left + inset + i / (n - 1f) * w
+        }
+    }
+    fun nearest(x: Float, left: Float, width: Float): Int =
+        (0 until n).minByOrNull { abs(plotX(it, left, width) - x) } ?: 0
+
     Canvas(
         modifier
             .fillMaxWidth()
-            .height(220.dp)
-            .pointerInput(values.size) {
-                val leftPad = 36.dp.toPx()
-                fun idx(x: Float) = (((x - leftPad) / (size.width - leftPad)) * (values.size - 1)).let { kotlin.math.round(it).toInt() }.coerceIn(0, values.size - 1)
+            .height(height)
+            .pointerInput(n, pos) {
+                val left = 40.dp.toPx()
                 detectHorizontalDragGestures(
-                    onDragStart = { sel = idx(it.x); onSelect(sel) },
+                    onDragStart = { sel = nearest(it.x, left, size.width.toFloat()); onSelect(sel) },
                     onDragEnd = { sel = null; onSelect(null) },
                     onDragCancel = { sel = null; onSelect(null) },
-                ) { change, _ -> sel = idx(change.position.x); onSelect(sel) }
+                ) { change, _ -> sel = nearest(change.position.x, left, size.width.toFloat()); onSelect(sel) }
             }
-            .pointerInput(values.size) {
-                val leftPad = 36.dp.toPx()
+            .pointerInput(n, pos) {
+                val left = 40.dp.toPx()
                 detectTapGestures { o ->
-                    val i = (((o.x - leftPad) / (size.width - leftPad)) * (values.size - 1)).let { kotlin.math.round(it).toInt() }.coerceIn(0, values.size - 1)
+                    val i = nearest(o.x, left, size.width.toFloat())
                     sel = if (sel == i) null else i; onSelect(sel)
                 }
             },
@@ -219,49 +290,59 @@ fun TrendChart(
             drawText(m, topLeft = Offset((size.width - m.size.width) / 2, (size.height - m.size.height) / 2))
             return@Canvas
         }
-        val vs = values.filterNotNull() + listOfNotNull(goal) + (average?.filterNotNull() ?: emptyList())
-        val left = 36.dp.toPx(); val bottom = 22.dp.toPx(); val top = 8.dp.toPx()
-        val w = size.width - left; val h = size.height - bottom - top
-        var lo = if (zeroBased) 0.0 else vs.min(); var hi = vs.max()
-        band?.let { lo = min(lo, it.start); hi = max(hi, it.endInclusive) }
-        val span = (hi - lo).coerceAtLeast(1e-6)
-        if (!zeroBased) lo -= span * .12
-        hi += span * .12
-        fun x(i: Int) = left + if (values.size <= 1) w / 2 else i / (values.size - 1f) * w
+        val multiLine = labels.x.any { '\n' in it }
+        val left = 40.dp.toPx(); val bottom = (if (multiLine) 34 else 22).dp.toPx(); val top = 8.dp.toPx()
+        val h = size.height - bottom - top
+        val data = values.filterNotNull() + (average?.filterNotNull() ?: emptyList())
+        val (lo, hi) = chartRange(data, band, goal, zones, zeroBased)
+        fun x(i: Int) = plotX(i, left, size.width)
         fun y(v: Double) = (top + h - ((v - lo) / (hi - lo) * h)).toFloat()
+        val plotRight = size.width
 
-        // grid + y labels (3 lines)
-        for (k in 0..2) {
-            val v = lo + (hi - lo) * (k / 2.0)
-            val yy = y(v)
-            drawLine(grid, Offset(left, yy), Offset(size.width, yy), 1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 8f)))
-            drawLabel(measurer, labels.format(v), Offset(0f, yy - 7.sp.toPx()), labelStyle)
+        // Named zones (behind everything), labelled at the right edge.
+        zones.forEach { z ->
+            val a = max(z.from, lo); val b = min(z.to, hi)
+            if (b <= a) return@forEach
+            drawRect(z.color.copy(alpha = .08f), Offset(left, y(b)), Size(plotRight - left, y(a) - y(b)))
+            val tm = measurer.measure(z.label, labelStyle.copy(color = z.color, fontSize = 10.sp))
+            if (y(a) - y(b) >= tm.size.height + 2) drawText(tm, topLeft = Offset(plotRight - tm.size.width - 4.dp.toPx(), y(b) + 2.dp.toPx()))
         }
-        // x labels
-        val n = labels.x.size
-        if (n > 0) {
-            val step = max(1, n / 5)
-            for (i in 0 until n step step) {
-                val t = labels.x[i]
-                val m = measurer.measure(t, labelStyle)
-                val xx = (x(i) - m.size.width / 2).coerceIn(left, size.width - m.size.width)
+        // Grid on round values.
+        niceTicks(lo, hi).forEach { v ->
+            val yy = y(v)
+            if (yy < top - 1 || yy > top + h + 1) return@forEach
+            drawLine(grid, Offset(left, yy), Offset(plotRight, yy), 1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 8f)))
+            val tm = measurer.measure(labels.format(v), labelStyle)
+            drawText(tm, topLeft = Offset((left - tm.size.width - 6.dp.toPx()).coerceAtLeast(0f), yy - tm.size.height / 2))
+        }
+        // X labels, thinned so they never collide.
+        if (labels.x.isNotEmpty()) {
+            val widest = labels.x.maxOf { t -> t.split('\n').maxOf { measurer.measure(it, labelStyle).size.width } }
+            val room = (plotRight - left) / labels.x.size
+            val step = max(1, kotlin.math.ceil((widest + 8.dp.toPx()) / room).toInt())
+            val last = labels.x.lastIndex
+            for (i in labels.x.indices) {
+                if ((last - i) % step != 0) continue
+                val m = measurer.measure(labels.x[i], labelStyle.copy(textAlign = androidx.compose.ui.text.style.TextAlign.Center))
+                val xx = (x(i) - m.size.width / 2).coerceIn(left - 6.dp.toPx(), size.width - m.size.width)
                 drawText(m, topLeft = Offset(xx, size.height - m.size.height))
             }
         }
         band?.let {
-            drawRoundRect(color.copy(alpha = .12f), Offset(left, y(it.endInclusive)), Size(w, y(it.start) - y(it.endInclusive)), CornerRadius(8f))
-        }
-        goal?.let {
-            drawLine(color.copy(alpha = .7f), Offset(left, y(it)), Offset(size.width, y(it)), 1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f)))
+            drawRoundRect(color.copy(alpha = .12f), Offset(left, y(it.endInclusive)), Size(plotRight - left, y(it.start) - y(it.endInclusive)), CornerRadius(8f))
+            bandLabel?.let { t ->
+                val tm = measurer.measure(t, labelStyle.copy(color = color, fontSize = 10.sp))
+                if (y(it.start) - y(it.endInclusive) >= tm.size.height) drawText(tm, topLeft = Offset(left + 6.dp.toPx(), y(it.endInclusive) + 2.dp.toPx()))
+            }
         }
         if (bars) {
-            val bw = (w / values.size * .62f).coerceAtMost(28.dp.toPx())
+            val bw = ((plotRight - left) / n * .62f).coerceAtMost(28.dp.toPx())
             values.forEachIndexed { i, v ->
                 if (v == null) return@forEachIndexed
-                val yy = y(v * p)
+                val yy = y(lo + (v - lo) * p)
                 val hit = goal != null && v >= goal
                 val c = if (sel == null || sel == i) color.copy(alpha = if (hit || goal == null) 1f else .55f) else color.copy(alpha = .25f)
-                drawRoundRect(c, Offset(x(i) - bw / 2, yy), Size(bw, y(lo) - yy), CornerRadius(bw / 2.5f))
+                drawRoundRect(c, Offset(x(i) - bw / 2, yy), Size(bw, (y(lo) - yy).coerceAtLeast(2f)), CornerRadius(bw / 2.5f))
             }
         } else {
             val dot = 2.6.dp.toPx()
@@ -276,13 +357,74 @@ fun TrendChart(
                 }
             }
         }
+        goal?.let { g ->
+            val gy = y(g)
+            drawLine(color.copy(alpha = .8f), Offset(left, gy), Offset(plotRight, gy), 1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f)))
+            goalLabel?.let { t ->
+                val tm = measurer.measure(t, labelStyle.copy(color = color, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, fontSize = 10.sp))
+                val padX = 6.dp.toPx(); val padY = 2.dp.toPx()
+                val bw = tm.size.width + padX * 2; val bh = tm.size.height + padY * 2
+                val bx = plotRight - bw
+                val by = if (gy - bh - 2 >= top) gy - bh - 2 else gy + 2
+                drawRoundRect(pillBg, Offset(bx, by), Size(bw, bh), CornerRadius(bh / 2))
+                drawText(tm, topLeft = Offset(bx + padX, by + padY))
+            }
+        }
         sel?.let { i ->
             val xx = x(i)
             drawLine(onSurface.copy(alpha = .5f), Offset(xx, top), Offset(xx, top + h), 1.dp.toPx())
-            values.getOrNull(i)?.let { v ->
+            val v = values.getOrNull(i)
+            if (v != null && !bars) {
                 drawCircle(Color.White, 6.dp.toPx(), Offset(xx, y(v)))
                 drawCircle(color, 4.dp.toPx(), Offset(xx, y(v)))
             }
+            val text = tooltip?.invoke(i) ?: listOfNotNull(labels.x.getOrNull(i)?.replace('\n', ' '), v?.let(labels.format) ?: "no data").joinToString("  ·  ")
+            val tm = measurer.measure(text, TextStyle(fontSize = 12.sp, color = tipFg, lineHeight = 16.sp))
+            val padX = 10.dp.toPx(); val padY = 6.dp.toPx()
+            val bw = tm.size.width + padX * 2; val bh = tm.size.height + padY * 2
+            val bx = (xx - bw / 2).coerceIn(0f, size.width - bw)
+            val anchor = v?.let { y(if (bars) lo + (it - lo) * p else it) } ?: (top + h / 2)
+            val by = if (anchor - bh - 10.dp.toPx() >= 0f) anchor - bh - 10.dp.toPx() else (anchor + 10.dp.toPx()).coerceAtMost(top + h - bh)
+            drawRoundRect(tipBg, Offset(bx, by), Size(bw, bh), CornerRadius(10.dp.toPx()))
+            drawText(tm, topLeft = Offset(bx + padX, by + padY))
+        }
+    }
+}
+
+/** What a legend swatch looks like. */
+enum class KeyKind { Dot, Line, Dash, Band, Bar }
+
+data class LegendKey(val kind: KeyKind, val color: Color, val label: String)
+
+/** A compact legend under a chart: every mark on the chart, named. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+fun ChartLegend(keys: List<LegendKey>, modifier: Modifier = Modifier) {
+    if (keys.isEmpty()) return
+    androidx.compose.foundation.layout.FlowRow(
+        modifier, horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(14.dp),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+    ) {
+        keys.forEach { k ->
+            androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
+                LegendSwatch(k.kind, k.color)
+                androidx.compose.foundation.layout.Spacer(Modifier.size(6.dp))
+                androidx.compose.material3.Text(k.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+fun LegendSwatch(kind: KeyKind, color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier.size(width = 20.dp, height = 12.dp)) {
+        val cy = size.height / 2
+        when (kind) {
+            KeyKind.Dot -> drawCircle(color.copy(alpha = .6f), 3.dp.toPx(), Offset(size.width / 2, cy))
+            KeyKind.Line -> drawLine(color, Offset(1f, cy), Offset(size.width - 1f, cy), 3.dp.toPx(), cap = StrokeCap.Round)
+            KeyKind.Dash -> drawLine(color, Offset(0f, cy), Offset(size.width, cy), 1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f)))
+            KeyKind.Band -> drawRoundRect(color.copy(alpha = .22f), Offset.Zero, size, CornerRadius(3.dp.toPx()))
+            KeyKind.Bar -> drawRoundRect(color, Offset(size.width / 2 - 4.dp.toPx(), 0f), Size(8.dp.toPx(), size.height), CornerRadius(3.dp.toPx()))
         }
     }
 }
@@ -366,8 +508,9 @@ fun StackBar(parts: List<Pair<Float, Color>>, modifier: Modifier = Modifier, hei
 }
 
 /**
- * Bed→wake windows for recent nights as vertical capsules on a 6 PM → 2 PM clock, with an optional
- * target bedtime line. windows = (bedMinutesFrom18h, wakeMinutesFrom18h) or null for no data.
+ * Bed→wake windows for recent nights as vertical capsules on a 6 PM → 2 PM clock, with an optional labelled
+ * target bedtime line. windows = (bedMinutesFrom18h, wakeMinutesFrom18h) or null for no data. Tap a night to
+ * see its times ([tooltip]).
  */
 @Composable
 fun SleepWindows(
@@ -376,46 +519,84 @@ fun SleepWindows(
     color: Color,
     modifier: Modifier = Modifier,
     targetBed: Float? = null,
-    targetWake: Float? = null,
+    targetLabel: String? = null,
+    tooltip: ((Int) -> String)? = null,
 ) {
     val measurer = rememberTextMeasurer()
-    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val grid = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f)
+    val cs = MaterialTheme.colorScheme
+    val labelColor = cs.onSurfaceVariant
+    val grid = cs.outlineVariant.copy(alpha = .5f)
+    val tipBg = cs.inverseSurface; val tipFg = cs.inverseOnSurface; val pillBg = cs.surfaceContainerLow
     val p = rememberGrow(windows.hashCode())
-    Canvas(modifier.fillMaxWidth().height(200.dp)) {
+    var sel by remember(windows.size) { mutableStateOf<Int?>(null) }
+    val n = windows.size
+    Canvas(
+        modifier.fillMaxWidth().height(210.dp).pointerInput(n) {
+            val left = 44.dp.toPx()
+            detectTapGestures { o ->
+                if (n == 0) return@detectTapGestures
+                val i = ((o.x - left) / ((size.width - left) / n)).toInt().coerceIn(0, n - 1)
+                sel = if (sel == i || windows[i] == null) null else i
+            }
+        },
+    ) {
         val vals = windows.filterNotNull()
         if (vals.isEmpty()) return@Canvas
-        val left = 40.dp.toPx(); val bottom = 20.dp.toPx()
-        val lo = (vals.minOf { it.first } - 30).coerceAtLeast(0f).let { (it / 60).toInt() * 60f }
+        val multi = dayLabels.any { '\n' in it }
+        val left = 44.dp.toPx(); val bottom = (if (multi) 34 else 20).dp.toPx(); val top = 4.dp.toPx()
+        val lo = (min(vals.minOf { it.first }, targetBed ?: Float.MAX_VALUE) - 30).coerceAtLeast(0f).let { (it / 60).toInt() * 60f }
         val hi = (vals.maxOf { it.second } + 30).let { ((it / 60).toInt() + 1) * 60f }
-        val h = size.height - bottom
-        fun y(m: Float) = (m - lo) / (hi - lo) * h
+        val h = size.height - bottom - top
+        fun y(m: Float) = top + (m - lo) / (hi - lo) * h
         val style = TextStyle(fontSize = 11.sp, color = labelColor)
-        var m = lo
         val step = if (hi - lo > 720) 180f else 120f
+        var m = (kotlin.math.ceil(lo / step) * step)
         while (m <= hi) {
-            drawLine(grid, Offset(left, y(m)), Offset(size.width, y(m)), 1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 8f)))
+            drawLine(grid, Offset(left, y(m)), Offset(size.width, y(m)), 1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 8f)))
             val hour = ((18 + (m / 60).toInt()) % 24)
             val t = "%d %s".format(if (hour % 12 == 0) 12 else hour % 12, if (hour < 12) "AM" else "PM")
-            drawText(measurer, t, topLeft = Offset(0f, y(m) - 7.sp.toPx()), style = style)
+            val tm = measurer.measure(t, style)
+            drawText(tm, topLeft = Offset(left - tm.size.width - 6.dp.toPx(), y(m) - tm.size.height / 2))
             m += step
         }
-        val n = windows.size
         val slot = (size.width - left) / n
         val bw = (slot * .5f).coerceAtMost(18.dp.toPx())
-        targetBed?.let { drawLine(color.copy(alpha = .8f), Offset(left, y(it)), Offset(size.width, y(it)), 1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f))) }
-        targetWake?.let { drawLine(color.copy(alpha = .4f), Offset(left, y(it)), Offset(size.width, y(it)), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 8f))) }
         windows.forEachIndexed { i, w ->
             val cx = left + slot * i + slot / 2
             if (w != null) {
                 val mid = (w.first + w.second) / 2
                 val a = mid - (mid - w.first) * p; val b = mid + (w.second - mid) * p
-                drawRoundRect(color, Offset(cx - bw / 2, y(a)), Size(bw, y(b) - y(a)), CornerRadius(bw / 2))
+                val c = if (sel == null || sel == i) color else color.copy(alpha = .3f)
+                drawRoundRect(c, Offset(cx - bw / 2, y(a)), Size(bw, y(b) - y(a)), CornerRadius(bw / 2))
             }
-            if (i < dayLabels.size && (n <= 14 || i % 2 == (n - 1) % 2)) {
-                val mm = measurer.measure(dayLabels[i], style)
+            if (i < dayLabels.size) {
+                val mm = measurer.measure(dayLabels[i], style.copy(textAlign = androidx.compose.ui.text.style.TextAlign.Center))
                 drawText(mm, topLeft = Offset(cx - mm.size.width / 2, size.height - mm.size.height))
             }
+        }
+        targetBed?.let { tb ->
+            val ty = y(tb)
+            drawLine(color.copy(alpha = .85f), Offset(left, ty), Offset(size.width, ty), 1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f)))
+            targetLabel?.let { t ->
+                val tm = measurer.measure(t, style.copy(color = color, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold))
+                val padX = 6.dp.toPx(); val padY = 2.dp.toPx()
+                val bw2 = tm.size.width + padX * 2; val bh = tm.size.height + padY * 2
+                val by = if (ty - bh - 2 >= 0) ty - bh - 2 else ty + 2
+                drawRoundRect(pillBg, Offset(size.width - bw2, by), Size(bw2, bh), CornerRadius(bh / 2))
+                drawText(tm, topLeft = Offset(size.width - bw2 + padX, by + padY))
+            }
+        }
+        sel?.let { i ->
+            val w = windows.getOrNull(i) ?: return@let
+            val text = tooltip?.invoke(i) ?: return@let
+            val tm = measurer.measure(text, TextStyle(fontSize = 12.sp, color = tipFg, lineHeight = 16.sp))
+            val padX = 10.dp.toPx(); val padY = 6.dp.toPx()
+            val bw2 = tm.size.width + padX * 2; val bh = tm.size.height + padY * 2
+            val cx = left + slot * i + slot / 2
+            val bx = (cx - bw2 / 2).coerceIn(0f, size.width - bw2)
+            val by = if (y(w.first) - bh - 8.dp.toPx() >= 0) y(w.first) - bh - 8.dp.toPx() else (y(w.second) + 8.dp.toPx()).coerceAtMost(size.height - bottom - bh)
+            drawRoundRect(tipBg, Offset(bx, by), Size(bw2, bh), CornerRadius(10.dp.toPx()))
+            drawText(tm, topLeft = Offset(bx + padX, by + padY))
         }
     }
 }
@@ -457,6 +638,22 @@ fun IntradayChart(
             val m = measurer.measure(timeLabel(t), style)
             val xx = left + (t - from).toFloat() / (to - from) * w
             drawText(m, topLeft = Offset((xx - m.size.width / 2).coerceIn(left, size.width - m.size.width), size.height - m.size.height))
+        }
+    }
+}
+
+/** Tiny bar sparkline for daily totals (steps, active minutes). */
+@Composable
+fun MiniBars(values: List<Double?>, color: Color, modifier: Modifier = Modifier) {
+    val p = rememberGrow(values.hashCode())
+    Canvas(modifier) {
+        val hi = values.filterNotNull().maxOrNull()?.takeIf { it > 0 } ?: return@Canvas
+        val slot = size.width / values.size
+        val bw = slot * .6f
+        values.forEachIndexed { i, v ->
+            if (v == null) return@forEachIndexed
+            val bh = (v / hi * size.height * p).toFloat().coerceAtLeast(1.5f)
+            drawRoundRect(color.copy(alpha = if (i == values.lastIndex) 1f else .55f), Offset(slot * i + (slot - bw) / 2, size.height - bh), Size(bw, bh), CornerRadius(bw / 3))
         }
     }
 }

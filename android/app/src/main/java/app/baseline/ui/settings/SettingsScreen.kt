@@ -192,6 +192,14 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                         Switch(checked = s.aiEnabled, onCheckedChange = { c -> vm.update { it.copy(aiEnabled = c) } })
                     }
                     if (s.aiEnabled) {
+                        Spacer(Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Daily brief on Today", style = MaterialTheme.typography.bodyLarge)
+                                Text("Written once a day. Close it on Today to hide it until tomorrow.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(checked = s.briefOnToday, onCheckedChange = { c -> vm.update { it.copy(briefOnToday = c, briefHiddenOn = "") } })
+                        }
                         Spacer(Modifier.height(12.dp))
                         OutlinedTextField(
                             value = key, onValueChange = { key = it }, label = { Text("Gemini API key") }, singleLine = true,

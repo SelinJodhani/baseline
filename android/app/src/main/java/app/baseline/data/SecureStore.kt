@@ -37,6 +37,10 @@ data class AppSettings(
     val aiEnabled: Boolean = false,
     val geminiKey: String = "",
     val geminiModel: String = "gemini-3.5-flash-lite",
+    /** Show (and auto-write) the daily AI brief on Today. */
+    val briefOnToday: Boolean = true,
+    /** The day ("yyyy-MM-dd") the brief was dismissed; it stays hidden for the rest of that day. */
+    val briefHiddenOn: String = "",
     val lastUpdateCheck: Long = 0,
     val skippedVersion: String = "",
     /** Calm mode: Today shows words instead of numbers (story pages keep their numbers). */

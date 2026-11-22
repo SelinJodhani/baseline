@@ -43,7 +43,7 @@ fun LabsEntries(onLabs: () -> Unit, onBodyComp: () -> Unit, vm: LabsViewModel = 
     val latest = data.reportsByDate.lastOrNull()
     val scan = data.scansByDate.lastOrNull()
     val labsLine = latest?.let { r ->
-        val out = r.markers.count { it.labFlag == LabFlag.High || it.labFlag == LabFlag.Low || it.labFlag == LabFlag.Abnormal }
+        val out = r.markers.count { it.outOfRange }
         "${data.reports.size} ${if (data.reports.size == 1) "report" else "reports"} · latest ${LabDates.pretty(r.date)}" + if (out > 0) " · $out outside range" else ""
     } ?: "Add a blood test to track your biomarkers"
     val compLine = scan?.let { s ->

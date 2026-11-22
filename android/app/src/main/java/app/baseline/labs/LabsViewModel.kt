@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.util.UUID
 
@@ -24,7 +26,7 @@ enum class DocKind { Lab, InBody }
 sealed interface UploadState {
     data object Idle : UploadState
     data class Working(val kind: DocKind) : UploadState
-    data class Done(val kind: DocKind, val message: String) : UploadState
+    data class Done(val kind: DocKind, val message: String, val canUndo: Boolean = false) : UploadState
     data class Failed(val kind: DocKind, val message: String) : UploadState
 }
 
@@ -55,7 +57,64 @@ class LabsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun giveConsent() = viewModelScope.launch { store.update { it.copy(consent = true) } }
 
-    fun dismissUpload() { _upload.value = UploadState.Idle }
+    fun dismissUpload() { _upload.value = UploadState.Idle; undoScans = null }
+
+    /** Scans as they were before the last CSV import, for Undo. */
+    private var undoScans: List<InBodyScan>? = null
+
+    /**
+     * A file was picked. An InBody CSV export is imported right here on the phone; anything else needs AI, so
+     * [needsAi] is called and the screen asks for setup or consent before [upload].
+     */
+    fun picked(uri: Uri, kind: DocKind, needsAi: (Uri) -> Unit) {
+        if (_upload.value is UploadState.Working) return
+        viewModelScope.launch {
+            if (kind == DocKind.InBody && LabExtractor.isCsv(getApplication(), uri)) importCsv(uri) else needsAi(uri)
+        }
+    }
+
+    private suspend fun importCsv(uri: Uri) {
+        _upload.value = UploadState.Working(DocKind.InBody)
+        _upload.value = runCatching {
+            val text = LabExtractor.readText(getApplication(), uri)
+            val r = withContext(Dispatchers.Default) { InBodyCsv.parse(text) }
+            if (r.scans.isEmpty()) error("No scans with a date and body numbers were found in that file.")
+            var replaced = 0
+            store.update { d ->
+                undoScans = d.scans
+                // Re-importing replaces the same scans; a scan read earlier from a photo of the same test is replaced too.
+                val keep = d.scans.filterNot { old ->
+                    r.scans.any { n ->
+                        n.id == old.id || (n.date == old.date && old.source != "csv" &&
+                            (old.weightKg == null || n.weightKg == null || kotlin.math.abs(old.weightKg - n.weightKg) < 0.25))
+                    }
+                }
+                replaced = d.scans.size - keep.size
+                d.copy(scans = keep + r.scans)
+            }
+            val first = r.scans.first().date; val last = r.scans.last().date
+            val skipped = listOfNotNull(
+                r.duplicates.takeIf { it > 0 }?.let { "$it duplicate ${if (it == 1) "row" else "rows"}" },
+                r.sameDay.takeIf { it > 0 }?.let { "$it repeat ${if (it == 1) "scan" else "scans"} on the same day (kept the last)" },
+                r.unreadable.takeIf { it > 0 }?.let { "$it unreadable ${if (it == 1) "row" else "rows"}" },
+            )
+            UploadState.Done(
+                DocKind.InBody,
+                "Imported ${r.scans.size} ${if (r.scans.size == 1) "scan" else "scans"}" +
+                    (if (first != last) " from ${LabDates.pretty(first)} to ${LabDates.pretty(last)}" else " from ${LabDates.pretty(first)}") + "." +
+                    (if (replaced > 0) " Updated $replaced already here." else "") +
+                    (if (skipped.isNotEmpty()) " Skipped ${skipped.joinToString(", ")}." else ""),
+                canUndo = true,
+            )
+        }.getOrElse { UploadState.Failed(DocKind.InBody, it.message ?: "Couldn't read that file") }
+    }
+
+    fun undoImport() {
+        val before = undoScans ?: return
+        undoScans = null
+        _upload.value = UploadState.Idle
+        viewModelScope.launch { store.update { it.copy(scans = before) } }
+    }
 
     fun upload(uri: Uri, kind: DocKind) {
         if (_upload.value is UploadState.Working) return

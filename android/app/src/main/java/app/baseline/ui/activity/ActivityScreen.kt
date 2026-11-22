@@ -1,5 +1,10 @@
 package app.baseline.ui.activity
 
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -92,7 +97,12 @@ fun ActivityScreen(m: Model, onRefresh: () -> Unit, onMetric: (app.baseline.ui.s
             SectionCard(onClick = { onMetric(app.baseline.ui.story.Metric.Steps) }) {
                 CardHeader("Steps · 14 days", Icons.Rounded.DirectionsWalk, h.steps, trailing = a.steps7Avg?.let { "avg ${Fmt.int(it)}" })
                 Spacer(Modifier.height(12.dp))
-                TrendChart(steps, h.steps, ChartLabels(dates.map { Fmt.weekday(it) }) { if (it >= 1000) "%.0fk".format(it / 1000) else "%.0f".format(it) }, bars = true, goal = a.stepGoal.toDouble())
+                val kfmt: (Double) -> String = { if (it >= 1000) "%.1fk".format(it / 1000).replace(".0k", "k") else "%.0f".format(it) }
+                TrendChart(
+                    steps, h.steps, ChartLabels(dates.map { "${Fmt.weekday(it)}\n${it.dayOfMonth}" }, kfmt), bars = true,
+                    goal = a.stepGoal.toDouble(), goalLabel = "Goal ${kfmt(a.stepGoal.toDouble())}",
+                    tooltip = { i -> "${Fmt.weekdayShort(dates[i])} ${Fmt.dayMonth(dates[i])}\n${steps[i]?.let { "%,d steps".format(it.roundToInt()) } ?: "No data"}" },
+                )
                 Spacer(Modifier.height(8.dp))
                 val hit = steps.count { (it ?: 0.0) >= a.stepGoal }
                 Text("Goal reached on $hit of 14 days", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -119,10 +129,12 @@ fun ActivityScreen(m: Model, onRefresh: () -> Unit, onMetric: (app.baseline.ui.s
             }
         }
 
-        val recent = m.data.summary?.workouts.orEmpty().sortedByDescending { it.start }.take(12)
+        val all = m.data.summary?.workouts.orEmpty().sortedByDescending { it.start }
         item {
+            var showAll by rememberSaveable { mutableStateOf(false) }
+            val recent = if (showAll) all.take(60) else all.take(6)
             SectionCard {
-                CardHeader("Workouts", Icons.Rounded.DirectionsRun, h.heart, trailing = if (recent.isEmpty()) null else "last ${recent.size}")
+                CardHeader("Workouts", Icons.Rounded.DirectionsRun, h.heart, trailing = if (all.isEmpty()) null else "${all.size} recorded")
                 Spacer(Modifier.height(8.dp))
                 if (recent.isEmpty()) {
                     Text("No workouts recorded yet. Start one on your watch and it shows up here after the next sync.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -130,6 +142,9 @@ fun ActivityScreen(m: Model, onRefresh: () -> Unit, onMetric: (app.baseline.ui.s
                 recent.forEachIndexed { idx, w ->
                     if (idx > 0) HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
                     WorkoutRow(w, zone)
+                }
+                if (all.size > 6) TextButton(onClick = { showAll = !showAll }) {
+                    Text(if (showAll) "Show fewer" else "Show more (${minOf(all.size, 60) - 6} more)")
                 }
             }
         }
@@ -181,8 +196,8 @@ private fun WorkoutRow(w: Workout, zone: java.time.ZoneId) {
             w.calories?.let { "${it.roundToInt()} kcal" },
         )
         if (extras.isNotEmpty()) {
-            Spacer(Modifier.height(6.dp))
-            Text(extras.joinToString(" · "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(4.dp))
+            Text(extras.joinToString(" · "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 52.dp))
         }
     }
 }

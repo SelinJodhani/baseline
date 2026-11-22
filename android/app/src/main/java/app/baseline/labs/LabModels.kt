@@ -22,6 +22,20 @@ data class LabMarker(
     val collectedDate: String? = null,
 ) {
     val labFlag: LabFlag get() = LabFlag.of(flag)
+
+    /**
+     * Where the value sits against its printed range. The numbers win over the extracted flag (AI can misread a
+     * flag column); "Abnormal" from the report is kept for qualitative results.
+     */
+    val status: LabFlag get() {
+        if (labFlag == LabFlag.Abnormal) return LabFlag.Abnormal
+        refHigh?.let { if (value > it) return LabFlag.High }
+        refLow?.let { if (value < it) return LabFlag.Low }
+        if (refLow != null || refHigh != null) return LabFlag.Normal
+        return labFlag
+    }
+
+    val outOfRange: Boolean get() = status == LabFlag.High || status == LabFlag.Low || status == LabFlag.Abnormal
     val labCategory: LabCategory get() = LabCategory.of(category)
 }
 
@@ -65,7 +79,25 @@ data class InBodyScan(
     val inBodyScore: Double? = null,
     val segmentalLean: List<Segment> = emptyList(),
     val segmentalFat: List<Segment> = emptyList(),
+    // Extra fields InBody's CSV export carries (null when read from a photo or not measured).
+    val softLeanKg: Double? = null,
+    val proteinKg: Double? = null,
+    val mineralKg: Double? = null,
+    val bodyCellMassKg: Double? = null,
+    /** Skeletal muscle index, kg/m². */
+    val smi: Double? = null,
+    val waistHipRatio: Double? = null,
+    val waistCm: Double? = null,
+    val visceralFatAreaCm2: Double? = null,
+    val phaseAngle: Double? = null,
+    /** Exact measurement time (epoch seconds) when known, for ordering scans on the same day. */
+    val measuredAt: Long? = null,
+    /** "csv" or "ai". */
+    val source: String = "ai",
 ) {
+    /** Lean (fat-free) mass: weight minus body fat mass. */
+    val leanKg: Double? get() = if (weightKg != null && bodyFatKg != null) weightKg - bodyFatKg else null
+
     val localDate: LocalDate get() = LabDates.parse(date) ?: LocalDate.MIN
 }
 
