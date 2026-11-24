@@ -84,6 +84,22 @@ data class ChartSetup(
     val weekly: Boolean = false,
     /** Where the period is heading (first → last point of the trend line), when it can be told. */
     val trend: TrendInfo? = null,
+    // ---- Bevel style
+    /** Your normal at each point (trailing mean ± SD over [normalWindow] days). */
+    val rolling: List<ClosedFloatingPointRange<Double>?>? = null,
+    /** −1 below your normal, 0 inside, +1 above, per point. */
+    val position: List<Int>? = null,
+    /** Days averaged into each point (1, 3, 6 or 30). */
+    val bucketDays: Int = 1,
+    /** Last day of each point's bucket. */
+    val ends: List<LocalDate>? = null,
+    /** Average of the visible period. */
+    val avg: Double? = null,
+    /** Your normal as of today. */
+    val normalNow: ClosedFloatingPointRange<Double>? = null,
+    val normalWindow: Int = 28,
+    /** Trends analysis (7/14/30/90 days). */
+    val rows: List<TrendRow> = emptyList(),
 ) {
     val count get() = values.count { it != null }
 }
@@ -117,7 +133,107 @@ fun trendOf(line: List<Double?>, higherIsBetter: Boolean?): TrendInfo? {
 /** Metrics whose daily value is already an average or rolling index, so a second average line would mislead. */
 private val alreadySmoothed = setOf(Metric.Consistency, Metric.HrvTrend, Metric.SleepNeed)
 
+/** How a value reads in words and pills: durations as "7h 24m", clock times as "5:30 AM", else the axis format. */
+fun displayFormat(metric: Metric, sp: Spec): (Double) -> String = when (metric) {
+    Metric.Sleep, Metric.SleepNeed -> { v -> InsightEngine.fmtDuration((v * 60).roundToInt().coerceAtLeast(0)) }
+    else -> sp.format
+}
+
+/** Metrics drawn the Bevel way (moving normal band, hollow dots, bucketed long ranges, trend table). */
+private val bevelStyle = Metric.entries.toSet() - setOf(Metric.Weight, Metric.Signals, Metric.Load, Metric.Zones)
+
+/** Days per point: 1 up to a month, then 3-day (3M), 6-day (6M) and monthly (1Y) averages, like Bevel. */
+fun bucketDaysFor(days: Int) = when { days >= 365 -> 30; days >= 180 -> 6; days >= 90 -> 3; else -> 1 }
+
+/** How far back "your normal" looks at each point. */
+fun normalWindowFor(days: Int) = when { days >= 365 -> 90; days >= 180 -> 42; else -> 28 }
+
+/** Trailing mean ± 1 SD over [window] days (≥ 7 readings), per day. */
+fun rollingNormal(daily: List<Double?>, window: Int): List<ClosedFloatingPointRange<Double>?> = daily.indices.map { i ->
+    val w = daily.subList(maxOf(0, i - window + 1), i + 1).filterNotNull()
+    if (w.size < 7) null else {
+        val mean = w.average()
+        val sd = kotlin.math.sqrt(w.sumOf { (it - mean) * (it - mean) } / w.size)
+        (mean - sd)..(mean + sd)
+    }
+}
+
+/** One row of the trend table: your recent average against the same span [days] earlier. */
+data class TrendRow(val days: Int, val delta: Double, val significant: Boolean, val good: Boolean?)
+
+/**
+ * Bevel's "Trends Analysis": how your recent average moved over 7/14/30/90 days. Each row compares the last
+ * min(k, 30) days with the same span ending k days earlier, so long rows aren't decided by one noisy week. A change
+ * counts as clear only beyond ~90 % confidence (1.65·SD·√(2/w)); otherwise it's shown grey.
+ */
+fun trendRows(daily: List<Double?>, higherIsBetter: Boolean?): List<TrendRow> {
+    fun mean(xs: List<Double?>, need: Int) = xs.filterNotNull().takeIf { it.size >= need }?.average()
+    val n = daily.size
+    val recent = daily.takeLast(120).filterNotNull()
+    if (recent.size < 10) return emptyList()
+    val m = recent.average()
+    val sd = kotlin.math.sqrt(recent.sumOf { (it - m) * (it - m) } / recent.size)
+    return listOf(7, 14, 30, 90).mapNotNull { k ->
+        val w = minOf(k, 30)
+        if (n < k + w) return@mapNotNull null
+        val need = maxOf(3, w / 2)
+        val cur = mean(daily.takeLast(w), need) ?: return@mapNotNull null
+        val prev = mean(daily.subList(n - k - w, n - k), need) ?: return@mapNotNull null
+        val d = cur - prev
+        val sig = sd > 0 && kotlin.math.abs(d) >= 1.65 * sd * kotlin.math.sqrt(2.0 / w)
+        TrendRow(k, d, sig, if (sig) higherIsBetter?.let { (d > 0) == it } else null)
+    }
+}
+
 fun chartSetup(m: Model, metric: Metric, days: Int, sp: Spec, h: HealthColors): ChartSetup {
+    if (metric !in bevelStyle) return classicSetup(m, metric, days, sp, h)
+    val window = normalWindowFor(days)
+    val full = values(m, metric, days + window)
+    val normalFull = rollingNormal(full, window)
+    val raw = full.takeLast(days)
+    val normalDaily = normalFull.takeLast(days)
+    val allDates = m.engine.dates(days)
+    // Start at the first reading (keeping at least a week) so a short history isn't squeezed into a corner.
+    val from = raw.indexOfFirst { it != null }.let { if (it < 0) 0 else minOf(it, maxOf(0, raw.size - 7)) }
+    val k = bucketDaysFor(days)
+    val idx = raw.indices.drop(from)
+    // Buckets end today, so the newest point is always a full bucket.
+    val chunks = idx.reversed().chunked(k).reversed().map { it.reversed() }
+    val vals = chunks.map { c -> c.mapNotNull { raw[it] }.takeIf { it.isNotEmpty() }?.average() }
+    val dates = chunks.map { allDates[it.first()] }
+    val ends = chunks.map { allDates[it.last()] }
+    val rolling = chunks.map { normalDaily[it.last()] }
+    val position = vals.mapIndexed { i, v -> val b = rolling[i]; when { v == null || b == null -> 0; v > b.endInclusive -> 1; v < b.start -> -1; else -> 0 } }
+    val visible = raw.drop(from).filterNotNull()
+    val stepGoal = m.settings.stepGoal.toDouble()
+    val (goal, goalLabel) = when (metric) {
+        Metric.Steps -> stepGoal to "Goal ${sp.format(stepGoal)}"
+        Metric.Sleep -> m.settings.sleepNeedMin / 60.0 to "Need ${InsightEngine.fmtDuration(m.settings.sleepNeedMin)}"
+        else -> null to null
+    }
+    val note = when {
+        metric == Metric.Readiness && m.insights.readiness.score == null ->
+            "These are Zepp's scores. Baseline's own score (and the Recover–Push zones) starts after 14 nights with HRV."
+        rolling.all { it == null } && vals.count { it != null } > 0 -> "Your normal range appears after a week of readings."
+        else -> null
+    }
+    return ChartSetup(
+        values = vals, dates = dates, trimmed = from > 0,
+        average = null, averageLabel = null,
+        band = null, bandLabel = null,
+        goal = goal, goalLabel = goalLabel,
+        zones = zonesFor(metric, h, m),
+        note = note,
+        weekly = false,
+        rolling = rolling, position = position, bucketDays = k, ends = ends,
+        avg = visible.takeIf { it.isNotEmpty() }?.average(),
+        normalNow = normalDaily.lastOrNull { it != null },
+        normalWindow = window,
+        rows = trendRows(values(m, metric, 120), sp.higherIsBetter),
+    )
+}
+
+private fun classicSetup(m: Model, metric: Metric, days: Int, sp: Spec, h: HealthColors): ChartSetup {
     val raw = values(m, metric, days)
     // Start at the first reading (keeping at least a week) so a short history isn't squeezed into a corner.
     val from = raw.indexOfFirst { it != null }.let { if (it < 0) 0 else minOf(it, maxOf(0, raw.size - 7)) }
@@ -194,6 +310,13 @@ const val WEIGHT_TAU_DAYS = 10.0
 /** The legend under a chart: only what's actually drawn. */
 fun ChartSetup.legend(metric: Metric, sp: Spec): List<LegendKey> = buildList {
     val c = sp.color
+    if (rolling != null) {
+        add(LegendKey(KeyKind.Dot, c, when (bucketDays) { 1 -> dailyName(metric); 30 -> "Monthly average"; else -> "$bucketDays-day average" }))
+        if (rolling.any { it != null }) add(LegendKey(KeyKind.Band, c, "Your normal (last ${if (normalWindow >= 60) "${normalWindow / 30} months" else "${normalWindow / 7} weeks"})"))
+        if (avg != null) add(LegendKey(KeyKind.Dash, c, "Average"))
+        goalLabel?.let { add(LegendKey(KeyKind.Dash, c, it)) }
+        return@buildList
+    }
     if (sp.bars) add(LegendKey(KeyKind.Bar, c, if (weekly) "Average per day, by week" else dailyName(metric)))
     else add(LegendKey(if (average != null) KeyKind.Dot else KeyKind.Line, c, dailyName(metric)))
     averageLabel?.let { add(LegendKey(KeyKind.Line, c, it)) }
@@ -214,9 +337,19 @@ private fun dailyName(metric: Metric) = when (metric) {
 }
 
 /** Text for the inspect tooltip: date, value, zone or band position, and average. */
-fun ChartSetup.tooltip(i: Int, sp: Spec): String {
+fun ChartSetup.tooltip(i: Int, sp: Spec, metric: Metric = Metric.Steps): String {
     val d = dates.getOrNull(i) ?: return ""
     val v = values.getOrNull(i)
+    if (rolling != null) {
+        val e = ends?.getOrNull(i) ?: d
+        val head = if (bucketDays == 1) "${Fmt.weekdayShort(d)} ${Fmt.dayMonth(d)}" else "${Fmt.dayMonth(d)} – ${Fmt.dayMonth(e)}"
+        if (v == null) return "$head\nNo reading"
+        val unit = if (sp.unit.isBlank() || sp.unit == "off") "" else " ${sp.unit}"
+        val where = when (position?.getOrNull(i)) { 1 -> "above your normal"; -1 -> "below your normal"; else -> if (rolling[i] != null) "in your normal" else null }
+        val fmt = displayFormat(metric, sp)
+        val u = if (metric == Metric.Sleep || metric == Metric.SleepNeed) "" else unit
+        return listOfNotNull(head, listOfNotNull("${fmt(v)}$u${if (bucketDays > 1) " avg" else ""}", where).joinToString(" · ")).joinToString("\n")
+    }
     val head = if (weekly) "Week of ${Fmt.dayMonth(d)}" else "${Fmt.weekdayShort(d)} ${Fmt.dayMonth(d)}"
     if (v == null) return "$head\nNo reading"
     val unit = if (sp.unit.isBlank() || sp.unit == "off") "" else " ${sp.unit}"

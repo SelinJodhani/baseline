@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -131,13 +132,20 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit, onOpenSettings: ()
                         }
                     }
                     setup.trend?.let { t -> TrendHeadline(metric, t, sp, if (setup.trimmed) "since ${Fmt.dayMonth(dates.first())}" else "over the last ${periodName(days)}", tColor ?: sp.color) }
+                    setup.normalNow?.let { b -> NormalHeader(metric, b, sp, setup.values.lastOrNull { it != null }, setup.position?.lastOrNull() ?: 0, h) }
                     Spacer(Modifier.height(4.dp))
+                    val bevel = setup.rolling != null
                     TrendChart(
                         values = setup.values, color = sp.color, trendColor = tColor,
-                        labels = ChartLabels(dates.map { if (dates.size <= 14 && !setup.weekly) "${Fmt.weekday(it)}\n${it.dayOfMonth}" else Fmt.dayMonth(it) }, sp.format),
+                        labels = ChartLabels(dates.map { if (dates.size <= 14 && !setup.weekly && setup.bucketDays == 1) "${Fmt.weekday(it)}\n${it.dayOfMonth}" else if (setup.bucketDays >= 30) Fmt.monthShort(it) else Fmt.dayMonth(it) }, sp.format),
                         average = setup.average, band = setup.band, bandLabel = setup.bandLabel,
-                        goal = setup.goal, goalLabel = setup.goalLabel, zones = setup.zones, bars = sp.bars,
-                        tooltip = { i -> setup.tooltip(i, sp) },
+                        goal = setup.goal, goalLabel = setup.goalLabel, zones = setup.zones, bars = sp.bars && !bevel,
+                        zeroBased = sp.bars && !bevel,
+                        tooltip = { i -> setup.tooltip(i, sp, metric) },
+                        rollingBand = setup.rolling,
+                        dotColors = setup.position?.map { pos -> positionColor(pos, sp, h) },
+                        avgValue = setup.avg,
+                        avgLabel = setup.avg?.let { "Avg ${displayFormat(metric, sp)(it)}" },
                     )
                     Spacer(Modifier.height(10.dp))
                     ChartLegend(setup.legend(metric, sp).map { k -> if (k.label == "Trend" && tColor != null) k.copy(color = tColor) else k })
@@ -145,11 +153,16 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit, onOpenSettings: ()
                     if (st.withData >= 2 && metric != Metric.SleepTiming) {
                         Spacer(Modifier.height(14.dp))
                         Row(Modifier.fillMaxWidth()) {
-                            PeriodStat("Average", st.avg?.let(sp.format), Modifier.weight(1f))
-                            PeriodStat("Low", st.low?.let(sp.format), Modifier.weight(1f))
-                            PeriodStat("High", st.high?.let(sp.format), Modifier.weight(1f))
-                            PeriodStat(if (setup.weekly) "Weeks" else "Days", "${st.withData}/${st.total}", Modifier.weight(1f))
+                            val df = displayFormat(metric, sp)
+                            PeriodStat("Average", st.avg?.let(df), Modifier.weight(1f))
+                            PeriodStat("Low", st.low?.let(df), Modifier.weight(1f))
+                            PeriodStat("High", st.high?.let(df), Modifier.weight(1f))
+                            PeriodStat(if (setup.weekly) "Weeks" else if (setup.bucketDays > 1) "Points" else "Days", "${st.withData}/${st.total}", Modifier.weight(1f))
                         }
+                    }
+                    if (setup.rows.isNotEmpty() && days >= 90) {
+                        Spacer(Modifier.height(16.dp))
+                        TrendTable(metric, setup.rows, sp)
                     }
                     setup.note?.let {
                         Spacer(Modifier.height(10.dp))
@@ -218,6 +231,70 @@ private fun TrendHeadline(metric: Metric, t: TrendInfo, sp: Spec, period: String
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 30.dp),
         )
     }
+}
+
+/** Dot colour for a point's place against your normal: green when that's good for you, orange when it isn't. */
+private fun positionColor(pos: Int, sp: Spec, h: app.baseline.ui.theme.HealthColors): Color = when {
+    pos == 0 || sp.higherIsBetter == null -> sp.color
+    (pos > 0) == sp.higherIsBetter -> h.great
+    else -> h.fair
+}
+
+/** "Your normal 52–62 bpm" with where the latest point sits, Bevel-style, above the chart. */
+@Composable
+private fun NormalHeader(metric: Metric, b: ClosedFloatingPointRange<Double>, sp: Spec, latest: Double?, pos: Int, h: app.baseline.ui.theme.HealthColors) {
+    val fmt = displayFormat(metric, sp)
+    val unit = if (sp.unit.isBlank() || sp.unit == "off" || fmt !== sp.format) "" else " ${sp.unit}"
+    Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Your normal", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("${fmt(b.start)} – ${fmt(b.endInclusive)}$unit", style = MaterialTheme.typography.titleMedium.merge(Numeric), fontWeight = FontWeight.SemiBold)
+        }
+        if (latest != null) {
+            val c = positionColor(pos, sp, h)
+            LevelPillLike(when (pos) { 1 -> "Above"; -1 -> "Below"; else -> "Inside" }, if (pos == 0) h.good else c)
+        }
+    }
+}
+
+@Composable
+private fun LevelPillLike(text: String, c: Color) {
+    Surface(shape = CircleShape, color = c.copy(alpha = .16f)) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(7.dp).clip(CircleShape).background(c))
+            Spacer(Modifier.width(6.dp))
+            Text(text, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+/** Bevel's "Trends Analysis": change of the 7-day average over 7/14/30/90 days; grey when it's within the noise. */
+@Composable
+private fun TrendTable(metric: Metric, rows: List<TrendRow>, sp: Spec) {
+    val h = Brand.health
+    val df = displayFormat(metric, sp)
+    val unit = if (sp.unit.isBlank() || sp.unit == "off" || metric == Metric.SleepTiming || df !== sp.format) "" else " ${sp.unit}"
+    Text("Trend analysis", style = MaterialTheme.typography.titleSmall)
+    Spacer(Modifier.height(4.dp))
+    rows.forEach { r ->
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
+        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("${r.days} days", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            val c = when (r.good) { true -> h.great; false -> h.fair; null -> MaterialTheme.colorScheme.onSurfaceVariant }
+            Icon(
+                when { !r.significant -> Icons.AutoMirrored.Rounded.TrendingFlat; r.delta > 0 -> Icons.AutoMirrored.Rounded.TrendingUp; else -> Icons.AutoMirrored.Rounded.TrendingDown },
+                null, tint = c, modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+            val amount = if (metric == Metric.SleepTiming) "${(kotlin.math.abs(r.delta) * 60).roundToInt()} min ${if (r.delta > 0) "later" else "earlier"}"
+                else "${if (r.delta >= 0) "+" else "−"}${df(kotlin.math.abs(r.delta))}$unit"
+            Text(amount, style = MaterialTheme.typography.bodyMedium.merge(Numeric), color = c, fontWeight = FontWeight.SemiBold)
+        }
+    }
+    Text(
+        "Your recent average (last 7, 14 or 30 days) against the same stretch that many days earlier. Grey means the change is within your usual day-to-day swing.",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp),
+    )
 }
 
 /** The change in the metric's own terms: minutes for clock times, points for scores, % for real quantities. */

@@ -24,6 +24,7 @@ object Fmt {
     fun clock(epoch: Long, zone: ZoneId): String = Instant.ofEpochSecond(epoch).atZone(zone).format(time)
     fun hour(epoch: Long, zone: ZoneId): String = Instant.ofEpochSecond(epoch).atZone(zone).format(hour).lowercase()
     fun dayMonth(d: LocalDate): String = d.format(dayMonth)
+    fun monthShort(d: LocalDate): String = d.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())
     fun fullDate(d: LocalDate): String = d.format(full)
     fun weekday(d: LocalDate): String = d.dayOfWeek.getDisplayName(TextStyle.NARROW, Locale.getDefault())
     fun weekdayShort(d: LocalDate): String = d.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault())

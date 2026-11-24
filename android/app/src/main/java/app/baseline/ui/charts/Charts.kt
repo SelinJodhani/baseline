@@ -237,6 +237,13 @@ fun TrendChart(
     height: Dp = 220.dp,
     /** Colour of the trend line and its fill (e.g. green when heading the right way); defaults to [color]. */
     trendColor: Color? = null,
+    /** Bevel-style: a personal normal range per point (rolling), drawn as a moving band behind hollow dots. */
+    rollingBand: List<ClosedFloatingPointRange<Double>?>? = null,
+    /** Per-point dot colours (e.g. green above your normal, orange below); defaults to [color]. */
+    dotColors: List<Color>? = null,
+    /** A dotted reference line with a pill label, e.g. the period average. */
+    avgValue: Double? = null,
+    avgLabel: String? = null,
     onSelect: (Int?) -> Unit = {},
 ) {
     val tc = trendColor ?: color
@@ -297,7 +304,8 @@ fun TrendChart(
         val multiLine = labels.x.any { '\n' in it }
         val left = 40.dp.toPx(); val bottom = (if (multiLine) 34 else 22).dp.toPx(); val top = 8.dp.toPx()
         val h = size.height - bottom - top
-        val data = values.filterNotNull() + (average?.filterNotNull() ?: emptyList())
+        val data = values.filterNotNull() + (average?.filterNotNull() ?: emptyList()) +
+            (rollingBand?.filterNotNull()?.flatMap { listOf(it.start, it.endInclusive) } ?: emptyList()) + listOfNotNull(avgValue)
         val (lo, hi) = chartRange(data, band, goal, zones, zeroBased)
         fun y(v: Double) = (top + h - ((v - lo) / (hi - lo) * h)).toFloat()
 
@@ -348,7 +356,51 @@ fun TrendChart(
                 if (y(it.start) - y(it.endInclusive) >= tm.size.height) drawText(tm, topLeft = Offset(left + 6.dp.toPx(), y(it.endInclusive) + 2.dp.toPx()))
             }
         }
-        if (bars) {
+        if (rollingBand != null) {
+            // Bevel-style: your normal as a band that moves with your history, readings as hollow dots on a thin line.
+            val upper = rollingBand.mapIndexedNotNull { i, b -> b?.let { Offset(x(i), y(it.endInclusive)) } }
+            val lower = rollingBand.mapIndexedNotNull { i, b -> b?.let { Offset(x(i), y(it.start)) } }
+            if (upper.size > 1) {
+                val path = smoothPath(upper).apply {
+                    val rev = lower.asReversed()
+                    lineTo(rev[0].x, rev[0].y)
+                    for (k in 1 until rev.size) { val p0 = rev[k - 1]; val p1 = rev[k]; val cx = (p0.x + p1.x) / 2; cubicTo(cx, p0.y, cx, p1.y, p1.x, p1.y) }
+                    close()
+                }
+                drawPath(path, color.copy(alpha = .15f))
+            }
+            avgValue?.let { a ->
+                val ay = y(a)
+                drawLine(color.copy(alpha = .85f), Offset(left, ay), Offset(plotRight, ay), 1.2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(), 3.dp.toPx())))
+            }
+            clipRevealRect(left, p) {
+                runs(values).forEach { run ->
+                    if (run.size > 1) {
+                        val path = Path().apply { run.forEachIndexed { k, (i, v) -> if (k == 0) moveTo(x(i), y(v)) else lineTo(x(i), y(v)) } }
+                        drawPath(path, color.copy(alpha = .9f), style = Stroke(1.6.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                    }
+                }
+                val r = (if (n > 40) 2.4 else 3.0).dp.toPx()
+                val lastI = values.indices.lastOrNull { values[it] != null }
+                values.forEachIndexed { i, v ->
+                    if (v == null) return@forEachIndexed
+                    val c = dotColors?.getOrNull(i) ?: color
+                    val o = Offset(x(i), y(v))
+                    if (i == lastI) { drawCircle(c.copy(alpha = .25f), r * 2.4f, o); drawCircle(c, r * 1.5f, o) }
+                    else { drawCircle(pillBg, r, o); drawCircle(c, r, o, style = Stroke(1.6.dp.toPx())) }
+                }
+            }
+            avgValue?.let { a ->
+                val t = avgLabel ?: "Avg ${labels.format(a)}"
+                val tm = measurer.measure(t, labelStyle.copy(color = color, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold))
+                val padX = 6.dp.toPx(); val padY = 2.dp.toPx()
+                val bw = tm.size.width + padX * 2; val bh = tm.size.height + padY * 2
+                val bx = left + (plotRight - left) * .38f; val by = y(a) - bh / 2
+                drawRoundRect(pillBg, Offset(bx, by), Size(bw, bh), CornerRadius(bh / 2))
+                drawRoundRect(color.copy(alpha = .45f), Offset(bx, by), Size(bw, bh), CornerRadius(bh / 2), style = Stroke(1.dp.toPx()))
+                drawText(tm, topLeft = Offset(bx + padX, by + padY))
+            }
+        } else if (bars) {
             val bw = ((plotRight - left) / n * .62f).coerceAtMost(28.dp.toPx())
             values.forEachIndexed { i, v ->
                 if (v == null) return@forEachIndexed
