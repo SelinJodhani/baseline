@@ -1,62 +1,67 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Widget palette: Material 3 tonal roles. Fallback below Android 12: Baseline brand tones (teal / sage / indigo), light. -->
+<!-- Widget palette (before Android 12): the same Material 3 roles as values-v31, resolved from a tonal-spot palette seeded with Baseline's coral heart (#E8604C). -->
 <resources>
     <!-- Card surface -->
-    <color name="w_surface">#FFE4F2EC</color>
+    <color name="w_surface">#FFFFEDEA</color>
     <!-- Primary text on surfaces -->
-    <color name="w_on_surface">#FF191C1B</color>
+    <color name="w_on_surface">#FF231918</color>
     <!-- Secondary text on surfaces -->
-    <color name="w_on_surface_var">#FF414945</color>
+    <color name="w_on_surface_var">#FF534341</color>
     <!-- Progress track on surfaces -->
-    <color name="w_track">#FFCDE8DD</color>
+    <color name="w_track">#FFFFDAD4</color>
     <!-- Chip fill on surfaces -->
-    <color name="w_chip">#FFCDE8DD</color>
+    <color name="w_chip">#FFFFDAD4</color>
     <!-- Text on chips -->
-    <color name="w_on_chip">#FF07201A</color>
+    <color name="w_on_chip">#FF2C1511</color>
     <!-- Primary accent: rings, indicators -->
-    <color name="w_a1">#FF156B58</color>
+    <color name="w_a1">#FF904B3F</color>
     <!-- Primary container (Readiness circle, verb chip) -->
-    <color name="w_a1_container">#FFA6F2D8</color>
+    <color name="w_a1_container">#FFFFDAD4</color>
     <!-- Text on primary container -->
-    <color name="w_on_a1_container">#FF002019</color>
+    <color name="w_on_a1_container">#FF3A0905</color>
     <!-- Muted text on primary container -->
-    <color name="w_on_a1_container_var">#FF005141</color>
+    <color name="w_on_a1_container_var">#FF73342A</color>
     <!-- Track on primary container -->
-    <color name="w_a1_track">#FF8AD6BD</color>
+    <color name="w_a1_track">#FFFFB4A7</color>
     <!-- Secondary container (Move) -->
-    <color name="w_a2_container">#FFCDE8DD</color>
+    <color name="w_a2_container">#FFFFDAD4</color>
     <!-- Text on secondary container -->
-    <color name="w_on_a2_container">#FF07201A</color>
+    <color name="w_on_a2_container">#FF2C1511</color>
     <!-- Muted text on secondary container -->
-    <color name="w_on_a2_container_var">#FF344C44</color>
+    <color name="w_on_a2_container_var">#FF5D3F3A</color>
     <!-- Track on secondary container -->
-    <color name="w_a2_track">#FFB2CCC2</color>
+    <color name="w_a2_track">#FFE7BDB6</color>
     <!-- Tertiary accent: sleep, active minutes -->
-    <color name="w_a3">#FF4B5BBE</color>
+    <color name="w_a3">#FF6F5C2E</color>
     <!-- Tertiary, softer (earlier nights) -->
-    <color name="w_a3_mid">#FFA0ACFF</color>
+    <color name="w_a3_mid">#FFC1A973</color>
     <!-- Tertiary container (Sleep) -->
-    <color name="w_a3_container">#FFDFE0FF</color>
+    <color name="w_a3_container">#FFFBE0A6</color>
     <!-- Text on tertiary container -->
-    <color name="w_on_a3_container">#FF000F5D</color>
+    <color name="w_on_a3_container">#FF251A00</color>
     <!-- Muted text on tertiary container -->
-    <color name="w_on_a3_container_var">#FF3241A4</color>
+    <color name="w_on_a3_container_var">#FF564419</color>
     <!-- Track on tertiary container -->
-    <color name="w_a3_track">#FFBDC2FF</color>
-    <!-- Deep sleep -->
-    <color name="w_stage_deep">#FF15258D</color>
-    <!-- REM sleep -->
-    <color name="w_stage_rem">#FF358571</color>
-    <!-- Light sleep -->
-    <color name="w_stage_light">#FF7F8FF6</color>
-    <!-- Awake -->
-    <color name="w_stage_awake">#FFBDC2FF</color>
-    <!-- Fixed semantic colours (not wallpaper-driven), same on every API level. -->
+    <color name="w_a3_track">#FFDDC48C</color>
+    <!-- Deep sleep: primary -->
+    <color name="w_stage_deep">#FF904B3F</color>
+    <!-- Light sleep: a lighter primary -->
+    <color name="w_stage_light">#FFFFB4A7</color>
+    <!-- REM sleep: tertiary -->
+    <color name="w_stage_rem">#FF8A7544</color>
+    <!-- Awake: a softened error (no system error palette before Android 14) -->
+    <color name="w_stage_awake">#FFE8A49C</color>
+    <!-- Level: great = primary -->
+    <color name="w_level_great">#FF904B3F</color>
+    <!-- Level: good = primary, a step softer -->
+    <color name="w_level_good">#FFAD6256</color>
+    <!-- Level: caution = tertiary -->
+    <color name="w_level_fair">#FF6F5C2E</color>
+    <!-- Level: needs rest = Material error -->
+    <color name="w_level_low">#FFBA1A1A</color>
+    <!-- Level: unknown = outline -->
+    <color name="w_level_unknown">#FF857370</color>
+    <!-- Alert: Material error container (same on every API level). -->
     <color name="w_alert_container">#FFFFDAD6</color>
     <color name="w_on_alert_container">#FF410002</color>
-    <color name="w_level_great">#FF14A37A</color>
-    <color name="w_level_good">#FF6E9E1E</color>
-    <color name="w_level_fair">#FFD08A00</color>
-    <color name="w_level_low">#FFD9483B</color>
-    <color name="w_level_unknown">#FF8A938E</color>
 </resources>
