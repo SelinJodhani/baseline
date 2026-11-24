@@ -160,7 +160,7 @@ fun TileRow(content: @Composable RowScope.() -> Unit) {
 fun KeyValue(label: String, value: String, modifier: Modifier = Modifier, valueColor: Color = MaterialTheme.colorScheme.onSurface) {
     Column(modifier) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.headlineSmall.merge(Numeric), color = valueColor)
+        Text(value, style = MaterialTheme.typography.titleLarge.merge(Numeric), color = valueColor)
     }
 }
 

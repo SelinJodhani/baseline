@@ -256,7 +256,7 @@ fun TrendChart(
     val tipBg = cs.inverseSurface
     val tipFg = cs.inverseOnSurface
     val pillBg = cs.surfaceContainerLow
-    val labelStyle = TextStyle(fontSize = 11.sp, color = onSurface)
+    val labelStyle = TextStyle(fontFamily = app.baseline.ui.theme.FlexText, fontSize = 12.sp, color = onSurface)
     val n = values.size
     val pos = positions?.takeIf { it.size == n }
     val dens = androidx.compose.ui.platform.LocalDensity.current.density
@@ -320,7 +320,7 @@ fun TrendChart(
             if (z.from > lo && z.from < hi) {
                 drawLine(z.color.copy(alpha = .45f), Offset(left, y(z.from)), Offset(plotRight, y(z.from)), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 4.dp.toPx())))
             }
-            val tm = measurer.measure(z.label, labelStyle.copy(color = z.color, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium))
+            val tm = measurer.measure(z.label, labelStyle.copy(color = z.color, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium))
             if (y(a) - y(b) >= tm.size.height + 4) {
                 val px = 5.dp.toPx(); val py = 1.dp.toPx()
                 val bx = plotRight - tm.size.width - px * 2; val by = y(b) + 3.dp.toPx()
@@ -342,17 +342,22 @@ fun TrendChart(
             val room = (plotRight - left) / labels.x.size
             val step = max(1, kotlin.math.ceil((widest * 1.15f + 6.dp.toPx()) / room).toInt())
             val last = labels.x.lastIndex
-            for (i in labels.x.indices) {
+            // Right to left, so the newest label always shows; skip any that would touch the one to its right
+            // (the edge clamp can push a label sideways into its neighbour).
+            var nextLeft = Float.MAX_VALUE
+            for (i in last downTo 0) {
                 if ((last - i) % step != 0) continue
                 val m = measurer.measure(labels.x[i], labelStyle.copy(textAlign = androidx.compose.ui.text.style.TextAlign.Center))
                 val xx = (x(i) - m.size.width / 2).coerceIn(left - 6.dp.toPx(), size.width - m.size.width)
+                if (xx + m.size.width > nextLeft - 6.dp.toPx()) continue
                 drawText(m, topLeft = Offset(xx, size.height - m.size.height))
+                nextLeft = xx
             }
         }
         band?.let {
             drawRoundRect(color.copy(alpha = .12f), Offset(left, y(it.endInclusive)), Size(plotRight - left, y(it.start) - y(it.endInclusive)), CornerRadius(8f))
             bandLabel?.let { t ->
-                val tm = measurer.measure(t, labelStyle.copy(color = color, fontSize = 10.sp))
+                val tm = measurer.measure(t, labelStyle.copy(color = color, fontSize = 12.sp))
                 if (y(it.start) - y(it.endInclusive) >= tm.size.height) drawText(tm, topLeft = Offset(left + 6.dp.toPx(), y(it.endInclusive) + 2.dp.toPx()))
             }
         }
@@ -392,7 +397,7 @@ fun TrendChart(
             }
             avgValue?.let { a ->
                 val t = avgLabel ?: "Avg ${labels.format(a)}"
-                val tm = measurer.measure(t, labelStyle.copy(color = color, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold))
+                val tm = measurer.measure(t, labelStyle.copy(color = color, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold))
                 val padX = 6.dp.toPx(); val padY = 2.dp.toPx()
                 val bw = tm.size.width + padX * 2; val bh = tm.size.height + padY * 2
                 val bx = left + (plotRight - left) * .38f; val by = y(a) - bh / 2
@@ -458,7 +463,7 @@ fun TrendChart(
                 drawCircle(tc, 4.dp.toPx() * p, c)
                 if (avgLine != null && sel == null && p > .99f) {
                     // Where the trend is now, labelled at the end of the line.
-                    val tm = measurer.measure(labels.format(line[i]!!), TextStyle(fontSize = 11.sp, color = Color.White, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold))
+                    val tm = measurer.measure(labels.format(line[i]!!), TextStyle(fontFamily = app.baseline.ui.theme.FlexText, fontSize = 12.sp, color = cs.surface, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold))
                     val padX = 6.dp.toPx(); val padY = 2.dp.toPx()
                     val bw = tm.size.width + padX * 2; val bh = tm.size.height + padY * 2
                     val bx = (c.x - bw - 8.dp.toPx()).coerceAtLeast(left)
@@ -472,7 +477,7 @@ fun TrendChart(
             val gy = y(g)
             drawLine(color.copy(alpha = .8f), Offset(left, gy), Offset(plotRight, gy), 1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f)))
             goalLabel?.let { t ->
-                val tm = measurer.measure(t, labelStyle.copy(color = color, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, fontSize = 10.sp))
+                val tm = measurer.measure(t, labelStyle.copy(color = color, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, fontSize = 12.sp))
                 val padX = 6.dp.toPx(); val padY = 2.dp.toPx()
                 val bw = tm.size.width + padX * 2; val bh = tm.size.height + padY * 2
                 val bx = plotRight - bw
@@ -492,11 +497,11 @@ fun TrendChart(
             drawLine(onSurface.copy(alpha = .5f), Offset(xx, top), Offset(xx, top + h), 1.dp.toPx())
             val v = values.getOrNull(i)
             if (v != null && !bars) {
-                drawCircle(Color.White, 6.dp.toPx(), Offset(xx, y(v)))
+                drawCircle(cs.surface, 6.dp.toPx(), Offset(xx, y(v)))
                 drawCircle(color, 4.dp.toPx(), Offset(xx, y(v)))
             }
             val text = tooltip?.invoke(i) ?: listOfNotNull(labels.x.getOrNull(i)?.replace('\n', ' '), v?.let(labels.format) ?: "no data").joinToString("  ·  ")
-            val tm = measurer.measure(text, TextStyle(fontSize = 12.sp, color = tipFg, lineHeight = 16.sp))
+            val tm = measurer.measure(text, TextStyle(fontFamily = app.baseline.ui.theme.FlexText, fontSize = 13.sp, color = tipFg, lineHeight = 18.sp))
             val padX = 10.dp.toPx(); val padY = 6.dp.toPx()
             val bw = tm.size.width + padX * 2; val bh = tm.size.height + padY * 2
             val bx = (xx - bw / 2).coerceIn(0f, size.width - bw)
@@ -569,7 +574,8 @@ fun Hypnogram(
     val measurer = rememberTextMeasurer()
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val p = rememberGrow(stages.size)
-    Canvas(modifier.fillMaxWidth().height(150.dp)) {
+    val connector = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .28f)
+    Canvas(modifier.fillMaxWidth().height(176.dp)) {
         if (stages.isEmpty()) return@Canvas
         val lanes = listOf("awake", "rem", "light", "deep")
         val bottom = 20.dp.toPx()
@@ -577,26 +583,31 @@ fun Hypnogram(
         val t0 = stages.first().first; val t1 = stages.last().second
         val span = (t1 - t0).coerceAtLeast(1).toFloat()
         fun x(t: Long) = (t - t0) / span * size.width
-        val barH = laneH * .62f
+        val barH = laneH * .7f
         // Faint lane guides, then each stage as a block in its lane. Adjacent blocks of the same stage are joined and
         // blocks get a minimum width, so a restless stretch reads as a band rather than a mess of hairlines.
         lanes.indices.forEach { i ->
             val cy = i * laneH + laneH / 2
             drawLine(colors[lanes[i]]?.copy(alpha = .12f) ?: Color.Gray, Offset(0f, cy), Offset(size.width, cy), 1.dp.toPx())
         }
-        val merged = mutableListOf<Triple<Long, Long, String>>()
-        stages.forEach { s -> val last = merged.lastOrNull(); if (last != null && last.third == s.third && s.first - last.second <= 60) merged[merged.lastIndex] = Triple(last.first, s.second, s.third) else merged += s }
+        val merged = smoothStages(stages)
         clipReveal(p) {
-            val minW = 2.5.dp.toPx()
+            val minW = 3.dp.toPx()
+            // Thin step connectors first, so the night reads as one path through the lanes.
+            merged.zipWithNext().forEach { (a, b) ->
+                val la = lanes.indexOf(a.third).coerceAtLeast(0); val lb = lanes.indexOf(b.third).coerceAtLeast(0)
+                val xx = x(b.first)
+                drawLine(connector, Offset(xx, la * laneH + laneH / 2), Offset(xx, lb * laneH + laneH / 2), 1.5.dp.toPx(), cap = StrokeCap.Round)
+            }
             merged.forEach { (a, b, st) ->
                 val lane = lanes.indexOf(st).coerceAtLeast(0)
                 val c = colors[st] ?: Color.Gray
                 val yTop = lane * laneH + (laneH - barH) / 2
                 val xa = x(a); val xb = max(x(b), xa + minW)
-                drawRoundRect(c, Offset(xa, yTop), Size(xb - xa, barH), CornerRadius(minOf(barH / 3, (xb - xa) / 2)))
+                drawRoundRect(c, Offset(xa, yTop), Size(xb - xa, barH), CornerRadius(minOf(barH / 2.5f, (xb - xa) / 2)))
             }
         }
-        val style = TextStyle(fontSize = 11.sp, color = labelColor)
+        val style = TextStyle(fontFamily = app.baseline.ui.theme.FlexText, fontSize = 12.sp, color = labelColor)
         // Labels on round hours (every 1–2 h) rather than at the odd start/end minute.
         val hours = ((t1 - t0) / 3600).coerceAtLeast(1)
         val stepH = if (hours > 6) 2 else 1
@@ -664,12 +675,13 @@ fun SleepWindows(
         val vals = windows.filterNotNull()
         if (vals.isEmpty()) return@Canvas
         val multi = dayLabels.any { '\n' in it }
-        val left = 44.dp.toPx(); val bottom = (if (multi) 34 else 20).dp.toPx(); val top = 4.dp.toPx()
+        val labelStrip = if (targetBed != null && targetLabel != null) 28.dp.toPx() else 0f
+        val left = 44.dp.toPx(); val bottom = (if (multi) 34 else 20).dp.toPx(); val top = 4.dp.toPx() + labelStrip
         val lo = (min(vals.minOf { it.first }, targetBed ?: Float.MAX_VALUE) - 30).coerceAtLeast(0f).let { (it / 60).toInt() * 60f }
         val hi = (vals.maxOf { it.second } + 30).let { ((it / 60).toInt() + 1) * 60f }
         val h = size.height - bottom - top
         fun y(m: Float) = top + (m - lo) / (hi - lo) * h
-        val style = TextStyle(fontSize = 11.sp, color = labelColor)
+        val style = TextStyle(fontFamily = app.baseline.ui.theme.FlexText, fontSize = 12.sp, color = labelColor)
         val step = if (hi - lo > 720) 180f else 120f
         var m = (kotlin.math.ceil(lo / step) * step)
         while (m <= hi) {
@@ -699,18 +711,21 @@ fun SleepWindows(
             val ty = y(tb)
             drawLine(color.copy(alpha = .85f), Offset(left, ty), Offset(size.width, ty), 1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f)))
             targetLabel?.let { t ->
-                val tm = measurer.measure(t, style.copy(color = color, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold))
+                val tm = measurer.measure(t, style.copy(color = color, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold))
                 val padX = 6.dp.toPx(); val padY = 2.dp.toPx()
                 val bw2 = tm.size.width + padX * 2; val bh = tm.size.height + padY * 2
-                val by = if (ty - bh - 2 >= 0) ty - bh - 2 else ty + 2
+                // In its own strip above the plot (it used to sit on top of the bars), tied to the line by a short tick.
+                val by = (labelStrip - bh) / 2
                 drawRoundRect(pillBg, Offset(size.width - bw2, by), Size(bw2, bh), CornerRadius(bh / 2))
+                drawRoundRect(color.copy(alpha = .45f), Offset(size.width - bw2, by), Size(bw2, bh), CornerRadius(bh / 2), style = Stroke(1.dp.toPx()))
                 drawText(tm, topLeft = Offset(size.width - bw2 + padX, by + padY))
+                drawLine(color.copy(alpha = .6f), Offset(size.width - bw2 / 2, by + bh), Offset(size.width - bw2 / 2, ty), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)))
             }
         }
         sel?.let { i ->
             val w = windows.getOrNull(i) ?: return@let
             val text = tooltip?.invoke(i) ?: return@let
-            val tm = measurer.measure(text, TextStyle(fontSize = 12.sp, color = tipFg, lineHeight = 16.sp))
+            val tm = measurer.measure(text, TextStyle(fontFamily = app.baseline.ui.theme.FlexText, fontSize = 13.sp, color = tipFg, lineHeight = 18.sp))
             val padX = 10.dp.toPx(); val padY = 6.dp.toPx()
             val bw2 = tm.size.width + padX * 2; val bh = tm.size.height + padY * 2
             val cx = left + slot * i + slot / 2
@@ -743,7 +758,7 @@ fun IntradayChart(
         val lo = data.minOf { it[1] } - 5; val hi = data.maxOf { it[3] } + 5
         fun x(t: Double) = left + ((t + 1800 - from) / (to - from) * w).toFloat()
         fun y(v: Double) = (h - (v - lo) / (hi - lo) * h).toFloat()
-        val style = TextStyle(fontSize = 11.sp, color = labelColor)
+        val style = TextStyle(fontFamily = app.baseline.ui.theme.FlexText, fontSize = 12.sp, color = labelColor)
         drawText(measurer, "%.0f".format(hi - 5), topLeft = Offset(0f, 0f), style = style)
         drawText(measurer, "%.0f".format(lo + 5), topLeft = Offset(0f, h - 14.sp.toPx()), style = style)
         clipRevealRect(left, p) {
@@ -782,4 +797,30 @@ fun MiniBars(values: List<Double?>, color: Color, modifier: Modifier = Modifier)
 @Composable
 fun Dot(color: Color, size: Dp = 8.dp) {
     Canvas(Modifier.size(size)) { drawCircle(color) }
+}
+
+/**
+ * Stages as they read best: same-stage blocks within a minute are joined, and blips under 4 minutes are absorbed into
+ * the block before them (the usual smoothing in sleep apps), so a restless stretch reads as a band, not hairlines.
+ */
+internal fun smoothStages(stages: List<Triple<Long, Long, String>>, minSec: Long = 240): List<Triple<Long, Long, String>> {
+    fun join(src: List<Triple<Long, Long, String>>): MutableList<Triple<Long, Long, String>> {
+        val out = mutableListOf<Triple<Long, Long, String>>()
+        src.forEach { s ->
+            val last = out.lastOrNull()
+            if (last != null && last.third == s.third && s.first - last.second <= 60) out[out.lastIndex] = Triple(last.first, s.second, s.third) else out += s
+        }
+        return out
+    }
+    var cur = join(stages.sortedBy { it.first })
+    repeat(3) {
+        if (cur.size < 3) return cur
+        val next = mutableListOf<Triple<Long, Long, String>>()
+        cur.forEachIndexed { i, s ->
+            val short = s.second - s.first < minSec
+            if (short && i > 0 && next.isNotEmpty()) next[next.lastIndex] = next.last().let { Triple(it.first, s.second, it.third) } else next += s
+        }
+        cur = join(next)
+    }
+    return cur
 }

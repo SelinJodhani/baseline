@@ -136,7 +136,7 @@ fun ActivityScreen(m: Model, onRefresh: () -> Unit, onMetric: (app.baseline.ui.s
                     Spacer(Modifier.height(12.dp))
                     LevelPill(load.label, load.level)
                     Spacer(Modifier.height(12.dp))
-                    TrendChart(loads.map { it.takeIf { v -> v > 0 } }, h.fair, ChartLabels(dates.map { Fmt.dayMonth(it) }) { "%.0f".format(it) }, bars = true)
+                    TrendChart(loads.map { it.takeIf { v -> v > 0 } }, h.steps, ChartLabels(dates.map { Fmt.dayMonth(it) }) { "%.0f".format(it) }, bars = true)
                     Spacer(Modifier.height(12.dp))
                     Row(Modifier.fillMaxWidth()) {
                         KeyValue("Fatigue (7d)", "%.0f".format(load.acute), Modifier.weight(1f))
