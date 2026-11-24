@@ -165,6 +165,25 @@ class HcPlannerTest {
         assertEquals(2600L, lowered.progress.steps)
     }
 
+    @Test fun `each rewrite generation gets its own ids, generation 0 keeps the original form`() {
+        assertEquals("baseline-hrv-1764000000", HcPlanner.recordId("hrv", 0, 1764000000L))
+        assertEquals("baseline-hrv-g1-1764000000", HcPlanner.recordId("hrv", 1, 1764000000L))
+        assertTrue(HcPlanner.recordId("hrv", 2, 1764000000L) != HcPlanner.recordId("hrv", 1, 1764000000L))
+        // Daily-total ids still start with their kind, which the fingerprint clean-up relies on.
+        assertTrue(HcPlanner.recordId("steps", 3, "2026-11-24-1763922600").startsWith("baseline-steps-"))
+    }
+
+    @Test fun `a refill adds only hours with none of Baseline's readings, inside the window`() {
+        val pts = listOf("09:40", "10:10", "10:20", "10:45", "11:35", "12:40").map { HcPlanner.Point(t("2026-10-28T$it"), 70.0) }
+        // IST clock hours run :30–:30 in epoch terms; Baseline already has the 10:30–11:30 hour.
+        val covered = setOf(HcPlanner.floorHour(t("2026-10-28T10:45")))
+        val fill = HcPlanner.missingHours(pts, covered, from = t("2026-10-28T09:30"), to = t("2026-10-28T12:30"))
+        assertEquals(listOf(listOf("09:40", "10:10", "10:20"), listOf("11:35")).map { h -> h.map { t("2026-10-28T$it") } }, fill.map { c -> c.samples.map { it.t } })
+        assertEquals(t("2026-10-28T10:20") + 1, fill.first().end)
+        // Nothing left to add once every hour is there.
+        assertTrue(HcPlanner.missingHours(pts, fill.map { HcPlanner.floorHour(it.start) }.toSet() + covered, t("2026-10-28T09:30"), t("2026-10-28T12:30")).isEmpty())
+    }
+
     @Test fun `zepp workout types map to Health Connect types`() {
         assertEquals(androidx.health.connect.client.records.ExerciseSessionRecord.EXERCISE_TYPE_RUNNING_TREADMILL, HealthConnectSync.exerciseType("treadmill"))
         assertEquals(androidx.health.connect.client.records.ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT, HealthConnectSync.exerciseType("unknown:15"))

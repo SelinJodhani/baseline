@@ -12,7 +12,7 @@ import java.time.ZoneId
  *
  * The rules, and why:
  *  - Readings (heart rate, HRV, SpO2) are copied as recorded, one record per reading (heart rate: one record per
- *    hour), each with a fixed client id, so re-sending one updates it instead of duplicating it.
+ *    hour), each written once under a fixed client id; a rewrite uses new ids (see [recordId]).
  *  - A night is written only once it is settled: Zepp has readings from at least [SLEEP_SETTLE_SEC] after it
  *    ended. The Zepp app writes a half-finished night around 5 am and extends it later; Google Health keeps the
  *    first copy it sees, so writing early would lock in a 3-hour "nap".
@@ -161,6 +161,29 @@ object HcPlanner {
         )
         return DayStep(add.takeIf { it.steps != null || it.distanceM != null || it.activeKcal != null }, null, progress)
     }
+
+    // ------------------------------------------------------------------ fresh ids for every rewrite
+    //
+    // Health Connect derives a record's identity from its client id, so a record deleted and written again under the
+    // same id reaches apps that sync from Health Connect as an edit of the one they already have — and Google Health
+    // keeps its first copy (24 Nov 2026: HRV moved to new times under the old ids stayed on the old days). So each
+    // delete-and-rewrite starts a new generation, and readings and daily totals carry it in their ids.
+
+    /** Client id for a reading or a daily-total record. Generation 0 keeps the original `baseline-<kind>-<key>` form. */
+    fun recordId(kind: String, gen: Int, key: Any): String = if (gen <= 0) "baseline-$kind-$key" else "baseline-$kind-g$gen-$key"
+
+    // ------------------------------------------------------------------ refilling heart rate
+    //
+    // On 24 Nov 2026 the first week of a heart-rate rewrite never arrived in Health Connect, while every later week
+    // did. So after each rewrite Baseline reads back which clock hours hold its readings and adds the missing ones.
+
+    /**
+     * Readings in [from, to) from clock hours absent from [covered] (hours Baseline already has readings in), one record
+     * per hour. Hours already there are never written again, so a refill only ever adds.
+     */
+    fun missingHours(points: List<Point>, covered: Set<Long>, from: Long, to: Long): List<HrHour> =
+        points.filter { it.t >= from && it.t < to && floorHour(it.t) !in covered }.sortedBy { it.t }
+            .groupBy { floorHour(it.t) }.values.map { ps -> HrHour(ps.first().t, ps.last().t + 1, ps) }
 
     // ------------------------------------------------------------------ Google Health HRV dates (optional)
     //
