@@ -34,6 +34,7 @@ object DemoData {
         var vo2 = 43.5
         var weight = 78.6
         var paiWindow = ArrayDeque<Double>()
+        val loadWindow = ArrayDeque<Double>() // Zepp's day-level training load is a rolling 7-day sum
 
         for (i in DAYS - 1 downTo 0) {
             val date = today.minusDays(i.toLong())
@@ -111,6 +112,7 @@ object DemoData {
             }
             val pai = (moderate * 0.09 + vigorous * 0.32).coerceAtMost(40.0)
             paiWindow.addLast(pai); if (paiWindow.size > 7) paiWindow.removeFirst()
+            loadWindow.addLast(load); if (loadWindow.size > 7) loadWindow.removeFirst()
             val stress = (30 + 9 * (if (weekend) -1 else 1) + 18 * ill + r.gauss(0.0, 6.0)).coerceIn(8.0, 80.0)
             val relaxed = (62 - stress * 0.7 + r.gauss(0.0, 4.0)).coerceIn(5.0, 90.0)
             val zr = (78 + (hrvLn - ln(60.0)) * 70 - (rhr - 56) * 2.2 + (sleep.asleepMin - 420) / 9.0).coerceIn(20.0, 99.0)
@@ -135,7 +137,7 @@ object DemoData {
                 pai = pai.round1(), paiWeek = paiWindow.sum().round1() + 38,
                 lowZoneMin = (moderate * 1.8).roundToInt().toDouble(), moderateZoneMin = moderate.roundToInt().toDouble(), vigorousZoneMin = vigorous.roundToInt().toDouble(),
                 zeppReadiness = zr.roundToInt().toDouble(), zeppSkinTempScore = skinTemp, charge = (zr - 6 + r.gauss(0.0, 5.0)).coerceIn(5.0, 100.0).roundToInt().toDouble(),
-                trainingLoad = load.roundToInt().toDouble(), vo2max = vo2.round1(),
+                trainingLoad = loadWindow.sum().roundToInt().toDouble(), vo2max = vo2.round1(),
                 minHr = (rhr - 4).roundToInt().toDouble(), azm = (moderate + 2 * vigorous).roundToInt().toDouble(),
             )
         }

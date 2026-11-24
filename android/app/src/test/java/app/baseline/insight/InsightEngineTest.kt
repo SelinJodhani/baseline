@@ -205,6 +205,20 @@ class InsightEngineTest {
         assertEquals(Level.Great, i.sleep.consistency)
     }
 
+    @Test fun dailyLoadUnrollsZeppsRollingWeek() {
+        // Zepp reports a 7-day rolling sum: a 380 run 10 days ago shows as 380 for 7 days, then 0;
+        // a 120 session 2 days ago adds on top for the rest of its week.
+        val s = summary(20, tweakPast = { i, d ->
+            val r = (if (i in 4..10) 380.0 else 0.0) + (if (i in 0..2) 120.0 else 0.0)
+            d.copy(trainingLoad = r)
+        }, tweakToday = { it.copy(trainingLoad = 120.0) })
+        val loads = engine(s).dailyLoad(14)
+        assertEquals(14, loads.size)
+        assertEquals(380.0, loads[13 - 10], 0.01)
+        assertEquals(120.0, loads[13 - 2], 0.01)
+        assertEquals(380.0 + 120.0, loads.sum(), 0.01) // one value per session, not one per day of its week
+    }
+
     @Test fun clockSdHandlesMidnight() {
         val sd = Stats.clockSdMinutes(listOf(23 * 60 + 30.0, 30.0, 23 * 60 + 30.0, 30.0))!!
         assertTrue("sd $sd", sd in 25.0..40.0)

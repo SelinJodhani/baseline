@@ -41,12 +41,13 @@ fun RefreshablePage(refreshing: Boolean, onRefresh: () -> Unit, content: LazyLis
     // (callers pass data.refreshing || data.syncing)
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     PullToRefreshBox(isRefreshing = refreshing, onRefresh = onRefresh, modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top + 8.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            modifier = Modifier.fillMaxSize(),
-            content = content,
-        )
+        ProvideEntrance {
+            LazyColumn(
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top + 8.dp, bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxSize(),
+            ) { StaggeredListScope(this).content() }
+        }
         StatusBarScrim()
     }
 }

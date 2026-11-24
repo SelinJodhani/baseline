@@ -64,6 +64,7 @@ import app.baseline.insight.Rules
 import app.baseline.insight.Signal
 import app.baseline.insight.Verb
 import app.baseline.ui.theme.Brand
+import app.baseline.ui.common.ConnectedButtonGroup
 import app.baseline.ui.theme.Numeric
 
 // ---- Shared bits -------------------------------------------------------------------------------------------
@@ -94,8 +95,8 @@ fun verbFraction(v: Verb?): Float? = when (v) {
 fun QuietChip(text: String, modifier: Modifier = Modifier) {
     Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = modifier) {
         Text(
-            text, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
         )
     }
 }
@@ -121,45 +122,18 @@ fun signalChip(s: Signal): String? = when (s.confidence) {
 @Composable
 fun CheckIn(m: Model, onFeel: (Feel?) -> Unit, onTakeItEasy: () -> Unit) {
     val feel = m.insights.feel
-    var editing by rememberSaveable(m.insights.today.toString()) { mutableStateOf(false) }
     val cs = MaterialTheme.colorScheme
-    if (feel == null || editing) {
-        Column {
-            Text("How do you feel?", style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant)
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Feel.entries.forEach { f ->
-                    val selected = f == feel
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = if (selected) cs.secondaryContainer else Color.Transparent,
-                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(16.dp))
-                            .border(1.dp, if (selected) cs.secondaryContainer else cs.outlineVariant, RoundedCornerShape(16.dp))
-                            .clickable { onFeel(f); editing = false },
-                    ) {
-                        Column(Modifier.padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(feelIcon(f), null, tint = if (selected) cs.onSecondaryContainer else cs.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                            Spacer(Modifier.height(4.dp))
-                            Text(f.label, style = MaterialTheme.typography.labelLarge, color = if (selected) cs.onSecondaryContainer else cs.onSurface)
-                        }
-                    }
-                }
-            }
-        }
-    } else {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(feelIcon(feel), null, tint = cs.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    when (feel) { Feel.Drained -> "You feel drained"; Feel.Ok -> "You feel OK"; Feel.Great -> "You feel great" },
-                    style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant, modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = { editing = true }) { Text("Change") }
-            }
-            if (feel == Feel.Drained && m.insights.mode == null) {
-                TextButton(onClick = onTakeItEasy, modifier = Modifier.padding(start = 20.dp)) { Text("Taking it easy? Pause targets") }
-            }
+    Column {
+        Text("How do you feel?", style = MaterialTheme.typography.titleMedium, color = cs.onSurfaceVariant)
+        Spacer(Modifier.height(10.dp))
+        // Tap the selected one again to clear it.
+        ConnectedButtonGroup(
+            options = Feel.entries, selected = feel,
+            onSelect = { onFeel(if (it == feel) null else it) },
+            label = { it.label }, icon = { feelIcon(it) },
+        )
+        if (feel == Feel.Drained && m.insights.mode == null) {
+            TextButton(onClick = onTakeItEasy, modifier = Modifier.padding(top = 4.dp)) { Text("Taking it easy? Pause targets") }
         }
     }
 }
@@ -169,9 +143,9 @@ fun CheckIn(m: Model, onFeel: (Feel?) -> Unit, onTakeItEasy: () -> Unit) {
 fun FeelAgreement(m: Model) {
     if (m.insights.feelMatch != FeelMatch.Agrees) return
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-        Icon(Icons.Rounded.Check, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
-        Spacer(Modifier.width(4.dp))
-        Text("Matches how you feel", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(Icons.Rounded.Check, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text("Matches how you feel", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -194,18 +168,18 @@ private fun modeLine(m: LifeMode) = when (m) {
 fun ModeBanner(span: ModeSpan, m: Model, onOff: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     val day = span.dayOf(m.insights.today).coerceIn(1, Journal.MODE_MAX_DAYS)
-    Surface(shape = RoundedCornerShape(28.dp), color = cs.surfaceContainerHigh) {
-        Row(Modifier.padding(start = 20.dp, end = 8.dp, top = 14.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(modeIcon(span.mode), null, tint = cs.onSurfaceVariant, modifier = Modifier.size(22.dp))
+    Surface(shape = MaterialTheme.shapes.large, color = cs.primaryContainer) {
+        Row(Modifier.padding(start = 22.dp, end = 10.dp, top = 16.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(modeIcon(span.mode), null, tint = cs.onPrimaryContainer, modifier = Modifier.size(26.dp))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text("${modeTitle(span.mode)} · day $day of ${Journal.MODE_MAX_DAYS}", style = MaterialTheme.typography.titleSmall)
+                Text("${modeTitle(span.mode)} · day $day of ${Journal.MODE_MAX_DAYS}", style = MaterialTheme.typography.titleMedium, color = cs.onPrimaryContainer)
                 Text(
                     if (span.mode.excludedFromBaseline) "Targets are paused, and these days won't count toward your normal." else "Targets are paused.",
-                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall, color = cs.onPrimaryContainer,
                 )
             }
-            TextButton(onClick = onOff) { Text("Turn off") }
+            TextButton(onClick = onOff) { Text("Turn off", color = cs.onPrimaryContainer) }
         }
     }
 }
@@ -217,7 +191,7 @@ fun ModeSheet(active: ModeSpan?, onPick: (LifeMode?) -> Unit, onDismiss: () -> U
     val cs = MaterialTheme.colorScheme
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = state, containerColor = cs.surfaceContainerLow) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp).navigationBarsPadding()) {
-            Text("Taking it easy?", style = MaterialTheme.typography.headlineSmall)
+            Text("Taking it easy?", style = MaterialTheme.typography.headlineMedium)
             Spacer(Modifier.height(6.dp))
             Text(
                 "Pause your targets for a while. Baseline keeps it gentle until you turn it off, or for ${Journal.MODE_MAX_DAYS} days.",
@@ -269,9 +243,9 @@ fun WhySheet(m: Model, onHistory: () -> Unit, onDismiss: () -> Unit) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp).navigationBarsPadding()) {
             Text(
                 if (r.verb == null) r.headline else "Why “${r.verb.label}” today",
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.headlineMedium,
             )
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             val intro = when {
                 r.calibratingNights != null ->
                     "Readiness unlocks after ${Rules.MIN_BASELINE} nights with HRV (${r.calibratingNights} so far). Until then you see Zepp's own score."
@@ -326,7 +300,7 @@ fun WhySheet(m: Model, onHistory: () -> Unit, onDismiss: () -> Unit) {
                         append("z is how many standard deviations last night sits from your normal; positive is better.")
                         if (r.score == null) r.zeppScore?.let { append(" Zepp's own score today: $it.") }
                     },
-                    style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp), color = cs.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
                 )
             }
             Spacer(Modifier.height(16.dp))

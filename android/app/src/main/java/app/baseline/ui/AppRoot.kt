@@ -20,7 +20,14 @@ import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.DirectionsRun
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.WbSunny
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.unit.dp
+import app.baseline.ui.common.ExpressiveLoading
+import app.baseline.ui.theme.Motion
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -110,8 +117,10 @@ private fun Main(vm: AppViewModel) {
     AnimatedContent(
         targetState = when { showConnect -> 6; showSettings -> 5; showLabs -> 4; showBodyComp -> 3; showHealthspan -> 2; story != null -> 1; else -> 0 },
         transitionSpec = {
-            if (targetState > initialState) (slideInHorizontally { it / 3 } + fadeIn()) togetherWith fadeOut()
-            else fadeIn() togetherWith (slideOutHorizontally { it / 3 } + fadeOut())
+            if (targetState > initialState) (slideInHorizontally(Motion.spatial()) { it / 4 } + fadeIn(Motion.effects())) togetherWith
+                (scaleOut(Motion.spatial(), targetScale = .94f) + fadeOut(Motion.fastEffects()))
+            else (scaleIn(Motion.spatial(), initialScale = .94f) + fadeIn(Motion.effects())) togetherWith
+                (slideOutHorizontally(Motion.spatial()) { it / 4 } + fadeOut(Motion.fastEffects()))
         },
         label = "overlay",
     ) { layer ->
@@ -149,14 +158,22 @@ private fun Main(vm: AppViewModel) {
                 val inner = PaddingValues(bottom = pad.calculateBottomPadding())
                 if (m == null) {
                     Box(Modifier.fillMaxSize().padding(inner), contentAlignment = Alignment.Center) {
-                        if (data.error != null) EmptyState(data.error!!, onRetry = { vm.refresh() }, onSettings = { showSettings = true })
-                        else CircularProgressIndicator()
+                        // A failed refresh only matters when there's no saved copy to show; otherwise keep loading.
+                        if (data.error != null && data.summary == null) EmptyState(data.error!!, onRetry = { vm.refresh() }, onSettings = { showSettings = true })
+                        else Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            ExpressiveLoading(size = 64.dp)
+                            Spacer(Modifier.height(20.dp))
+                            Text(
+                                if (data.summary != null) "Reading your data…" else "Connecting to your bridge…",
+                                style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 } else {
                     Box(Modifier.fillMaxSize().padding(inner)) {
                         val openSettings = { showSettings = true }
                         val openMetric: (Metric) -> Unit = { story = it }
-                        AnimatedContent(tab, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "tab") { t ->
+                        AnimatedContent(tab, transitionSpec = { fadeIn(Motion.effects()) togetherWith fadeOut(Motion.fastEffects()) }, label = "tab") { t ->
                             when (t) {
                                 0 -> TodayScreen(
                                     m, onRefresh = { vm.pullToRefresh() }, onSettings = openSettings, onMetric = openMetric, onTab = { tab = it },

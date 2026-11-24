@@ -524,10 +524,23 @@ class InsightEngine(
     }
 
     /** Daily load series: per-workout training load summed by local day (falls back to the day field). */
+    /**
+     * Training load per day. Workouts' own load wins. Otherwise Zepp's day-level `training_load`, which is a rolling
+     * 7-day sum (one run shows as the same value for a week), is turned back into daily amounts:
+     * L(d) = R(d) − R(d−1) + L(d−7).
+     */
     fun dailyLoad(back: Int): List<Double> {
         val byDay = s.workouts.groupBy { Instant.ofEpochSecond(it.start).atZone(zone).toLocalDate() }
-            .mapValues { (_, w) -> w.sumOf { it.trainingLoad ?: 0.0 } }
-        return dates(back).map { d -> byDay[d] ?: byDate[d]?.trainingLoad ?: 0.0 }
+            .mapValues { (_, w) -> w.sumOf { it.trainingLoad ?: 0.0 } }.filterValues { it > 0 }
+        val ds = dates(back + 7)
+        val fromRolling = DoubleArray(ds.size)
+        for (i in ds.indices) {
+            val r = byDate[ds[i]]?.trainingLoad
+            val prev = if (i > 0) byDate[ds[i - 1]]?.trainingLoad else null
+            fromRolling[i] = if (r == null || (i > 0 && prev == null)) 0.0
+            else (r - (prev ?: 0.0) + (if (i >= 7) fromRolling[i - 7] else 0.0)).coerceAtLeast(0.0)
+        }
+        return ds.indices.drop(7).map { i -> byDay[ds[i]] ?: fromRolling[i] }
     }
 
     /** Banister-style fitness/fatigue: acute 7-day and chronic 42-day EWMAs of daily load; form = chronic − acute. */

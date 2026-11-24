@@ -45,32 +45,28 @@ import app.baseline.ui.theme.Brand
 fun SectionCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
-    container: Color = MaterialTheme.colorScheme.surfaceContainerLow,
+    container: Color = MaterialTheme.colorScheme.surfaceContainer,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = CardDefaults.cardColors(containerColor = container)
     val shape = MaterialTheme.shapes.large
     if (onClick != null) {
         Card(onClick = onClick, modifier = modifier.fillMaxWidth(), shape = shape, colors = colors) {
-            Column(Modifier.padding(20.dp), content = content)
+            Column(Modifier.padding(horizontal = 22.dp, vertical = 22.dp), content = content)
         }
     } else {
         Card(modifier = modifier.fillMaxWidth(), shape = shape, colors = colors) {
-            Column(Modifier.padding(20.dp), content = content)
+            Column(Modifier.padding(horizontal = 22.dp, vertical = 22.dp), content = content)
         }
     }
 }
 
 @Composable
 fun CardHeader(title: String, icon: ImageVector, tint: Color, trailing: String? = null, chevron: Boolean = false) {
+    // The icon parameter is kept for callers; headers are type-led now (no icon-in-a-circle).
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            Modifier.size(32.dp).clip(CircleShape).background(tint.copy(alpha = .16f)),
-            contentAlignment = Alignment.Center,
-        ) { Icon(icon, null, tint = tint, modifier = Modifier.size(18.dp)) }
-        Spacer(Modifier.width(12.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-        trailing?.let { Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+        trailing?.let { Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp)) }
         if (chevron) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -78,22 +74,20 @@ fun CardHeader(title: String, icon: ImageVector, tint: Color, trailing: String? 
 @Composable
 fun BigValue(value: String, unit: String? = null, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.onSurface) {
     Row(modifier, verticalAlignment = Alignment.Bottom) {
-        Text(value, style = MaterialTheme.typography.displaySmall.merge(Numeric), color = color, fontWeight = FontWeight.Bold)
+        Text(value, style = MaterialTheme.typography.displayMedium.merge(Numeric), color = color)
         if (unit != null) {
             Spacer(Modifier.width(4.dp))
-            Text(unit, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
+            Text(unit, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
         }
     }
 }
 
 @Composable
 fun LevelPill(text: String, level: Level, modifier: Modifier = Modifier) {
-    val c = Brand.health.of(level)
-    Surface(shape = CircleShape, color = c.copy(alpha = .16f), modifier = modifier) {
-        Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(7.dp).clip(CircleShape).background(c))
-            Spacer(Modifier.width(6.dp))
-            Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+    val h = Brand.health
+    Surface(shape = CircleShape, color = h.container(level), modifier = modifier) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(text, style = MaterialTheme.typography.labelLarge, color = h.onContainer(level))
         }
     }
 }
@@ -126,20 +120,20 @@ fun StatTile(
     onClick: (() -> Unit)? = null,
     graphic: @Composable (() -> Unit)? = null,
 ) {
-    val shape = RoundedCornerShape(24.dp)
+    val shape = MaterialTheme.shapes.large
     Surface(
         shape = shape,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = modifier.clip(shape).then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
     ) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (level != Level.Unknown) Box(Modifier.size(8.dp).clip(CircleShape).background(Brand.health.of(level)))
+                Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                if (level != Level.Unknown) Box(Modifier.padding(start = 6.dp).size(10.dp).clip(CircleShape).background(Brand.health.of(level)))
             }
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.Bottom) {
-                Text(value, style = MaterialTheme.typography.headlineMedium.merge(Numeric), fontWeight = FontWeight.Bold)
+                Text(value, style = MaterialTheme.typography.headlineLarge.merge(Numeric))
                 if (unit != null) {
                     Spacer(Modifier.width(3.dp))
                     Text(unit, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
@@ -151,7 +145,7 @@ fun StatTile(
             }
             if (caption != null) {
                 Spacer(Modifier.height(6.dp))
-                Text(caption, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(caption, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -159,34 +153,34 @@ fun StatTile(
 
 @Composable
 fun TileRow(content: @Composable RowScope.() -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), content = content)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), content = content)
 }
 
 @Composable
 fun KeyValue(label: String, value: String, modifier: Modifier = Modifier, valueColor: Color = MaterialTheme.colorScheme.onSurface) {
     Column(modifier) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.titleLarge.merge(Numeric), color = valueColor, fontWeight = FontWeight.SemiBold)
+        Text(value, style = MaterialTheme.typography.headlineSmall.merge(Numeric), color = valueColor)
     }
 }
 
 @Composable
 fun ScreenTitle(title: String, subtitle: String? = null) {
-    Column(Modifier.padding(top = 8.dp, bottom = 4.dp)) {
-        Text(title, style = MaterialTheme.typography.headlineLarge)
-        if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(Modifier.padding(top = 12.dp, bottom = 8.dp, start = 4.dp, end = 4.dp)) {
+        Text(title, style = MaterialTheme.typography.displaySmall)
+        if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
     }
 }
 
 @Composable
 fun Explainer(text: String) {
-    Text(text, style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
 fun LegendItem(color: Color, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(10.dp).clip(RoundedCornerShape(3.dp)).background(color))
+        Box(Modifier.size(12.dp).clip(CircleShape).background(color))
         Spacer(Modifier.width(6.dp))
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
