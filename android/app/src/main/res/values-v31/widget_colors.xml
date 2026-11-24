@@ -49,8 +49,8 @@
     <color name="w_stage_light">@android:color/system_accent1_200</color>
     <!-- REM sleep: tertiary -->
     <color name="w_stage_rem">@android:color/system_accent3_500</color>
-    <!-- Awake: a softened error (no system error palette before Android 14) -->
-    <color name="w_stage_awake">#FFE8A49C</color>
+    <!-- Awake: outline (neutral) -->
+    <color name="w_stage_awake">@android:color/system_neutral2_500</color>
     <!-- Level: great = primary -->
     <color name="w_level_great">@android:color/system_accent1_600</color>
     <!-- Level: good = primary, a step softer -->

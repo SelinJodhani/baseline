@@ -303,7 +303,11 @@ fun <T> ConnectedButtonGroup(
                     horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
                 ) {
                     icon?.let { Icon(it(o), null, tint = fg, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(6.dp)) }
-                    Text(label(o), style = style, color = fg, textAlign = TextAlign.Center)
+                    // One line, never broken mid-word: the label steps down a little at large text sizes instead.
+                    Text(
+                        label(o), style = style, color = fg, textAlign = TextAlign.Center, maxLines = 1, softWrap = false,
+                        autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = style.fontSize),
+                    )
                 }
             }
         }

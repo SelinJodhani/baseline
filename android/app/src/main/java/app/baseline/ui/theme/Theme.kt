@@ -84,7 +84,8 @@ private val DarkFallback = darkColorScheme(
  * Health meanings mapped onto scheme roles.
  *
  * - Levels: great = primary, good = primary leaning to secondary, fair (caution) = tertiary, low (needs rest) = error.
- * - Sleep stages: deep = primary, light = a lighter primary, REM = tertiary, awake = a softened error.
+ * - Sleep stages: deep = primary, light = a lighter primary, REM = tertiary, awake = outline (neutral: not sleep,
+ *   and never confused with deep in schemes where error and primary share a hue).
  * - Metrics: one accent (primary); stress uses tertiary.
  *
  * `container(level)` / `onContainer(level)` give the tonal pair for a filled surface of that level.
@@ -105,7 +106,7 @@ data class HealthColors(
 
 fun healthColors(s: ColorScheme): HealthColors = HealthColors(
     great = s.primary, good = lerp(s.primary, s.secondary, .3f), fair = s.tertiary, low = s.error, neutral = s.outline,
-    deep = s.primary, light = lerp(s.primary, s.surfaceContainerLow, .55f), rem = s.tertiary, awake = lerp(s.error, s.surfaceContainerLow, .4f),
+    deep = s.primary, light = lerp(s.primary, s.surfaceContainerLow, .55f), rem = s.tertiary, awake = s.outline,
     heart = s.primary, hrv = s.primary, steps = s.primary, sleep = s.primary, stress = s.tertiary, oxygen = s.primary,
     containers = mapOf(
         Level.Great to (s.primaryContainer to s.onPrimaryContainer),
