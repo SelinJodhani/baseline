@@ -131,6 +131,9 @@ fun MorphBlob(
     val turn = if (spin) rememberInfiniteTransition(label = "turn").animateFloat(
         0f, 360f, infiniteRepeatable(tween(48_000, easing = LinearEasing)), label = "angle",
     ) else null
+    // Only shapes that fit their box at any angle (stars, circle) turn; the soft square and pill would poke out of it,
+    // so they ease back upright.
+    val tilt by animateFloatAsState(if (blob == Blob.Soft || blob == Blob.Pill) 0f else 1f, Motion.slowEffects(), label = "tilt")
     val fill by animateColorAsState(color, Motion.slowEffects(), label = "fill")
     val path = remember { android.graphics.Path() }
     val matrix = remember { android.graphics.Matrix() }
@@ -142,7 +145,7 @@ fun MorphBlob(
                 morph(from, to).toPath(progress.value.coerceIn(0f, 1.08f), path)
                 matrix.setScale(size.width, size.height)
                 path.transform(matrix)
-                rotate(turn?.value ?: 0f) { drawPath(path.asComposePath(), fill) }
+                rotate(((turn?.value ?: 0f) + 180f) % 360f * tilt - 180f * tilt) { drawPath(path.asComposePath(), fill) }
             },
         contentAlignment = Alignment.Center,
         content = content,
