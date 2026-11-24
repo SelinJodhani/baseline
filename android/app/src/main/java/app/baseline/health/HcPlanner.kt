@@ -116,6 +116,52 @@ object HcPlanner {
     /** Round an epoch down to its clock hour. */
     fun floorHour(t: Long): Long = t - Math.floorMod(t, 3600L)
 
+    // ------------------------------------------------------------------ add-only writing
+    //
+    // Google Health loses a record once it has been updated: today's steps record, rewritten each sync as the day
+    // grew, read as 0 steps (24 Nov 2026), while past days written once were fine. So nothing Google reads is ever
+    // updated: readings are written once each, and daily totals grow by adding a record for what's new.
+
+    /** Heart-rate readings newer than [after], as one record per clock hour, spanning just the readings in it. */
+    fun hrChunks(points: List<Point>, after: Long): List<HrHour> =
+        points.filter { it.t > after }.sortedBy { it.t }.groupBy { floorHour(it.t) }.values.map { ps -> HrHour(ps.first().t, ps.last().t + 1, ps) }
+
+    /** How much of a day's totals Baseline has written so far: everything up to [until]. */
+    @kotlinx.serialization.Serializable
+    data class DayProgress(val until: Long, val steps: Long = 0, val distanceM: Double = 0.0, val activeKcal: Double = 0.0)
+
+    /**
+     * What to add for a day: [add] covers (previous until, end] with what grew since; [full] lists metrics Zepp has
+     * since lowered, which must be replaced by one whole-so-far record (delete the day's records, write [start, end]).
+     */
+    data class DayStep(val add: DayTotals?, val full: DayTotals?, val progress: DayProgress)
+
+    fun dayStep(d: DayTotals, before: DayProgress?): DayStep {
+        val p = before ?: DayProgress(d.start)
+        if (d.end <= p.until) return DayStep(null, null, p)
+        val steps = d.steps ?: 0L
+        val dist = d.distanceM ?: 0.0
+        val kcal = d.activeKcal ?: 0.0
+        val lowered = steps < p.steps || dist < p.distanceM - 0.5 || kcal < p.activeKcal - 0.5
+        if (lowered) {
+            // Rare: Zepp revised the day down. Replace the day with one record of the current totals.
+            return DayStep(null, d.copy(start = d.start), DayProgress(d.end, steps, dist, kcal))
+        }
+        val add = DayTotals(
+            d.date, p.until, d.end,
+            (steps - p.steps).takeIf { it > 0 },
+            (dist - p.distanceM).takeIf { it >= 1.0 },
+            (kcal - p.activeKcal).takeIf { it >= 0.5 },
+        )
+        val progress = DayProgress(
+            d.end,
+            if (add.steps != null) steps else p.steps,
+            if (add.distanceM != null) dist else p.distanceM,
+            if (add.activeKcal != null) kcal else p.activeKcal,
+        )
+        return DayStep(add.takeIf { it.steps != null || it.distanceM != null || it.activeKcal != null }, null, progress)
+    }
+
     // ------------------------------------------------------------------ Google Health HRV dates (optional)
     //
     // Google Health files a night's HRV under the UTC calendar date of that night's first reading, and averages the

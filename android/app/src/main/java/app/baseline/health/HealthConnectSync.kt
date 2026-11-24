@@ -83,6 +83,14 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
         val lastWritten: Map<String, Int> = emptyMap(),
         /** How the HRV currently in Health Connect was written: "recorded" (true times) or "google" (moved per night). */
         val hrvMode: String = "recorded",
+        /** Newest reading written, per series (records are added once and never updated; see HcPlanner). */
+        val hrUntil: Long = 0,
+        val hrvUntil: Long = 0,
+        val spo2Until: Long = 0,
+        /** Daily totals written so far, by local date. */
+        val days: Map<String, HcPlanner.DayProgress> = emptyMap(),
+        /** 2 = add-only records. 0/1 = v0.6.0–0.6.1, which rewrote today's totals and the current hour's heart rate. */
+        val scheme: Int = 0,
     )
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
@@ -114,7 +122,7 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
         val error = outcome.exceptionOrNull()?.let { describe(it) }
         val st = load().copy(lastRunAt = Repository.nowSec(), lastError = error, lastWritten = outcome.getOrNull() ?: load().lastWritten)
         save(st)
-        _status.value = Status(false, st.lastRunAt, error, st.lastWritten, st.samplesUntil.takeIf { it > 0 })
+        _status.value = Status(false, st.lastRunAt, error, st.lastWritten, maxOf(st.hrUntil, st.hrvUntil, st.spo2Until).takeIf { it > 0 })
         error
     }
 
@@ -131,18 +139,32 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
         val counts = linkedMapOf<String, Int>()
         fun count(kind: String, n: Int) { if (n > 0) counts[kind] = (counts[kind] ?: 0) + n }
 
-        // 0. The HRV option changed: delete every HRV reading Baseline wrote and copy them again the other way.
+        val everything = TimeRangeFilter.between(Instant.EPOCH, Instant.now().plusSeconds(2 * 86_400L))
+        // 0a. Records from v0.6.0–0.6.1 that were updated in place (heart rate by the hour, daily totals): Google
+        //     Health drops those. Delete them once and write them again add-only.
+        if (st.scheme < 2) {
+            _status.update { it.copy(progress = "Rewriting heart rate and daily totals…") }
+            for (type in listOf(HeartRateRecord::class, StepsRecord::class, DistanceRecord::class, ActiveCaloriesBurnedRecord::class)) client.deleteRecords(type, everything)
+            st = st.copy(
+                scheme = 2, hrUntil = 0, days = emptyMap(),
+                hrvUntil = maxOf(st.hrvUntil, st.samplesUntil), spo2Until = maxOf(st.spo2Until, st.samplesUntil),
+                written = st.written.filterKeys { k -> listOf("baseline-steps-", "baseline-distance-", "baseline-active-").none { k.startsWith(it) } },
+            )
+            save(st)
+        }
+        // 0b. The HRV option changed: delete every HRV reading Baseline wrote and copy them again the other way.
         val hrvMode = if (googleHrv) "google" else "recorded"
         if (st.hrvMode != hrvMode) {
             _status.update { it.copy(progress = "Rewriting HRV…") }
-            client.deleteRecords(HeartRateVariabilityRmssdRecord::class, TimeRangeFilter.between(Instant.EPOCH, Instant.now().plusSeconds(2 * 86_400L)))
-            st = st.copy(hrvMode = hrvMode, samplesUntil = 0, written = st.written.filterKeys { !it.startsWith("baseline-hrvnight-") })
+            client.deleteRecords(HeartRateVariabilityRmssdRecord::class, everything)
+            st = st.copy(hrvMode = hrvMode, hrvUntil = 0, written = st.written.filterKeys { !it.startsWith("baseline-hrvnight-") })
             save(st)
         }
 
-        // 1. Readings, in week-long windows from the watermark (minus 2 h, hour-aligned, so late uploads and the
-        //    hour in progress are re-sent whole).
-        var cursor = HcPlanner.floorHour(if (st.samplesUntil > 0) maxOf(historyStart, st.samplesUntil - 7_200) else historyStart)
+        // 1. Readings, in week-long windows from the oldest per-series watermark (minus 2 h for late uploads). Only
+        //    readings newer than their series' watermark are written, so nothing is ever sent twice.
+        val marks = listOf(st.hrUntil, st.spo2Until) + (if (googleHrv) emptyList() else listOf(st.hrvUntil))
+        var cursor = HcPlanner.floorHour(if (marks.all { it > 0 }) maxOf(historyStart, marks.min() - 7_200) else historyStart)
         var lastReading = st.samplesUntil.takeIf { it > 0 }
         while (cursor < now) {
             val to = minOf(now, cursor + 7 * 86_400L)
@@ -150,22 +172,29 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
             val s = repo.fetchSamples(cursor, to)
             st = st.copy(device = s.device ?: st.device)
             val dev = device(st.device)
-            val version = Repository.nowSec()
-            val hr = HcPlanner.hrHours(s.heartRate, now).mapNotNull { h ->
+            val hrPts = HcPlanner.points(s.heartRate, 1.0, 300.0).filter { it.t <= now }
+            val hr = HcPlanner.hrChunks(hrPts, st.hrUntil).mapNotNull { h ->
                 build { HeartRateRecord(at(h.start), off(h.start, zone), at(h.end), off(h.end, zone),
-                    h.samples.map { HeartRateRecord.Sample(at(it.t), it.v.toLong()) }, Metadata.autoRecorded(dev, "baseline-hr-${h.start}", version)) }
+                    h.samples.map { HeartRateRecord.Sample(at(it.t), it.v.toLong()) }, Metadata.autoRecorded(dev, "baseline-hrc-${h.start}", 1)) }
             }
             // With the Google Health option, HRV is written per settled night instead (step 2).
-            val hrv = if (googleHrv) emptyList<HeartRateVariabilityRmssdRecord>() else HcPlanner.points(s.hrv, 1.0, 200.0).mapNotNull { p ->
-                build { HeartRateVariabilityRmssdRecord(at(p.t), off(p.t, zone), p.v, Metadata.autoRecorded(dev, "baseline-hrv-${p.t}", version)) }
+            val hrvPts = if (googleHrv) emptyList() else HcPlanner.points(s.hrv, 1.0, 200.0).filter { it.t > st.hrvUntil }
+            val hrv = hrvPts.mapNotNull { p ->
+                build { HeartRateVariabilityRmssdRecord(at(p.t), off(p.t, zone), p.v, Metadata.autoRecorded(dev, "baseline-hrv-${p.t}", 1)) }
             }
-            val spo2 = HcPlanner.points(s.spo2, 50.0, 100.0).mapNotNull { p ->
-                build { OxygenSaturationRecord(at(p.t), off(p.t, zone), Percentage(p.v), Metadata.autoRecorded(dev, "baseline-spo2-${p.t}", version)) }
+            val spo2Pts = HcPlanner.points(s.spo2, 50.0, 100.0).filter { it.t > st.spo2Until }
+            val spo2 = spo2Pts.mapNotNull { p ->
+                build { OxygenSaturationRecord(at(p.t), off(p.t, zone), Percentage(p.v), Metadata.autoRecorded(dev, "baseline-spo2-${p.t}", 1)) }
             }
             put(hr); put(hrv); put(spo2)
             count("heart rate", hr.sumOf { it.samples.size }); count("HRV", hrv.size); count("SpO₂", spo2.size)
             lastReading = listOfNotNull(lastReading, s.lastReadingAt).maxOrNull()
-            st = st.copy(samplesUntil = lastReading ?: st.samplesUntil)
+            st = st.copy(
+                samplesUntil = lastReading ?: st.samplesUntil,
+                hrUntil = maxOf(st.hrUntil, hr.maxOfOrNull { it.samples.last().time.epochSecond } ?: 0),
+                hrvUntil = maxOf(st.hrvUntil, hrvPts.maxOfOrNull { it.t } ?: 0),
+                spo2Until = maxOf(st.spo2Until, spo2Pts.maxOfOrNull { it.t } ?: 0),
+            )
             save(st)
             cursor = to
         }
@@ -218,11 +247,23 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
             written[id] = fingerprint
         }
         val main = HcPlanner.mainNights(nights, zone)
+        // Daily totals grow by adding a record for what's new since the last one (HcPlanner.dayStep).
+        val dayProgress = st.days.toMutableMap()
         for (d in HcPlanner.dayTotals(summary, sinceDate, now, zone)) {
-            val (s0, s1) = d.start to d.end
-            d.steps?.let { v -> add("baseline-steps-${d.date}", "$s1|$v", build { StepsRecord(at(s0), off(s0, zone), at(s1), off(s1, zone), v, Metadata.autoRecorded(dev, "baseline-steps-${d.date}", version)) }) }
-            d.distanceM?.let { v -> add("baseline-distance-${d.date}", "$s1|$v", build { DistanceRecord(at(s0), off(s0, zone), at(s1), off(s1, zone), Length.meters(v), Metadata.autoRecorded(dev, "baseline-distance-${d.date}", version)) }) }
-            d.activeKcal?.let { v -> add("baseline-active-${d.date}", "$s1|$v", build { ActiveCaloriesBurnedRecord(at(s0), off(s0, zone), at(s1), off(s1, zone), Energy.kilocalories(v), Metadata.autoRecorded(dev, "baseline-active-${d.date}", version)) }) }
+            val step = HcPlanner.dayStep(d, dayProgress[d.date.toString()])
+            step.full?.let { f ->
+                // Zepp lowered this day: replace Baseline's records for it with one of the current totals.
+                val day = TimeRangeFilter.between(at(f.start), at(f.start + 86_400L))
+                for (type in listOf(StepsRecord::class, DistanceRecord::class, ActiveCaloriesBurnedRecord::class)) client.deleteRecords(type, day)
+            }
+            (step.full ?: step.add)?.let { a ->
+                val (s0, s1) = a.start to a.end
+                val key = "${d.date}-$s0"
+                a.steps?.let { v -> add("baseline-steps-$key", "$s1|$v", build { StepsRecord(at(s0), off(s0, zone), at(s1), off(s1, zone), v, Metadata.autoRecorded(dev, "baseline-steps-$key", 1)) }) }
+                a.distanceM?.let { v -> add("baseline-distance-$key", "$s1|$v", build { DistanceRecord(at(s0), off(s0, zone), at(s1), off(s1, zone), Length.meters(v), Metadata.autoRecorded(dev, "baseline-distance-$key", 1)) }) }
+                a.activeKcal?.let { v -> add("baseline-active-$key", "$s1|$v", build { ActiveCaloriesBurnedRecord(at(s0), off(s0, zone), at(s1), off(s1, zone), Energy.kilocalories(v), Metadata.autoRecorded(dev, "baseline-active-$key", 1)) }) }
+            }
+            dayProgress[d.date.toString()] = step.progress
         }
         for (v in HcPlanner.restingHr(summary, sinceDate, main, today, zone)) {
             val id = "baseline-rhr-${v.date}"
@@ -244,7 +285,9 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
         }
         put(pending.map { it.second })
         for ((_, r) in pending) count(kindOf(r), 1)
-        save(st.copy(written = written, nights = nightSpans))
+        // Daily-total keys are one-off ids; keep the fingerprint map from growing with them.
+        val dayKeys = listOf("baseline-steps-", "baseline-distance-", "baseline-active-")
+        save(st.copy(written = written.filterKeys { k -> dayKeys.none { k.startsWith(it) } }, nights = nightSpans, days = dayProgress.filterKeys { it >= sinceDate.toString() }))
         return counts
     }
 
@@ -263,7 +306,17 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
 
     /** Forget what was written so the next run copies the whole history window again (records update in place). */
     suspend fun recopy(): String? {
-        mutex.withLock { save(load().copy(samplesUntil = 0, written = emptyMap())) }
+        // Readings and daily totals are add-only, so they're deleted and written again rather than re-sent (Google
+        // Health drops updated records). Nights, vitals and workouts keep their fingerprints: only new ones get added.
+        mutex.withLock {
+            withContext(Dispatchers.IO) {
+                val everything = TimeRangeFilter.between(Instant.EPOCH, Instant.now().plusSeconds(2 * 86_400L))
+                for (type in listOf(HeartRateRecord::class, HeartRateVariabilityRmssdRecord::class, OxygenSaturationRecord::class,
+                    StepsRecord::class, DistanceRecord::class, ActiveCaloriesBurnedRecord::class)) client.deleteRecords(type, everything)
+                val st = load()
+                save(st.copy(hrUntil = 0, hrvUntil = 0, spo2Until = 0, days = emptyMap(), written = st.written.filterKeys { !it.startsWith("baseline-hrvnight-") }))
+            }
+        }
         return run()
     }
 

@@ -136,6 +136,35 @@ class HcPlannerTest {
         assertEquals(0L, HcPlanner.googleHrvShift(far, nz))
     }
 
+    @Test fun `heart rate is written once - only readings after the watermark, one record per clock hour`() {
+        val pts = listOf(t("2026-11-24T10:01"), t("2026-11-24T10:05"), t("2026-11-24T10:40"), t("2026-11-24T10:50")).map { HcPlanner.Point(it, 60.0) }
+        // IST hours start at :30 in UTC terms, so 10:01/10:05 and 10:40/10:50 fall in different clock hours.
+        val chunks = HcPlanner.hrChunks(pts, after = t("2026-11-24T10:01"))
+        assertEquals(listOf(listOf(t("2026-11-24T10:05")), listOf(t("2026-11-24T10:40"), t("2026-11-24T10:50"))), chunks.map { c -> c.samples.map { it.t } })
+        assertEquals(t("2026-11-24T10:50") + 1, chunks.last().end)
+        assertTrue(HcPlanner.hrChunks(pts, after = t("2026-11-24T11:00")).isEmpty())
+    }
+
+    @Test fun `daily totals grow by adding what's new, never by rewriting`() {
+        val date = LocalDate.parse("2026-11-24")
+        fun totals(end: String, steps: Long?, dist: Double? = null) = HcPlanner.DayTotals(date, t("2026-11-24T00:00"), t(end), steps, dist, null)
+        val first = HcPlanner.dayStep(totals("2026-11-24T10:00", 2000, 1500.0), null)
+        assertEquals(HcPlanner.DayTotals(date, t("2026-11-24T00:00"), t("2026-11-24T10:00"), 2000, 1500.0, null), first.add)
+        // An hour later: only the 737 new steps, from 10:00 to 11:00; distance unchanged, so not written.
+        val second = HcPlanner.dayStep(totals("2026-11-24T11:00", 2737, 1500.0), first.progress)
+        assertEquals(HcPlanner.DayTotals(date, t("2026-11-24T10:00"), t("2026-11-24T11:00"), 737, null, null), second.add)
+        // Nothing new: nothing written, but the window moves on.
+        val third = HcPlanner.dayStep(totals("2026-11-24T12:00", 2737, 1500.0), second.progress)
+        assertNull(third.add)
+        assertEquals(t("2026-11-24T12:00"), third.progress.until)
+        // Zepp lowered the day: replace it with one record of the current totals.
+        val lowered = HcPlanner.dayStep(totals("2026-11-24T13:00", 2600, 1500.0), third.progress)
+        assertNull(lowered.add)
+        assertEquals(t("2026-11-24T00:00"), lowered.full!!.start)
+        assertEquals(2600L, lowered.full!!.steps)
+        assertEquals(2600L, lowered.progress.steps)
+    }
+
     @Test fun `zepp workout types map to Health Connect types`() {
         assertEquals(androidx.health.connect.client.records.ExerciseSessionRecord.EXERCISE_TYPE_RUNNING_TREADMILL, HealthConnectSync.exerciseType("treadmill"))
         assertEquals(androidx.health.connect.client.records.ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT, HealthConnectSync.exerciseType("unknown:15"))
