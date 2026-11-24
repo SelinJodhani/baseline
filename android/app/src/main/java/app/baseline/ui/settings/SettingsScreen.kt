@@ -69,6 +69,11 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
     val s = settings ?: return
     val ctx = LocalContext.current
     var confirmSignOut by remember { mutableStateOf(false) }
+    var showHcCheck by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    if (showHcCheck) {
+        HealthConnectCheckScreen(vm, onBack = { showHcCheck = false })
+        return
+    }
     fun open(url: String) = ctx.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -104,7 +109,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                     }
                 }
             }
-            item { HealthConnectCard(vm, s, bridgeHasSamples = data.summary?.capabilities?.samples == true) }
+            item { HealthConnectCard(vm, s, bridgeHasSamples = data.summary?.capabilities?.samples == true, onCheck = { showHcCheck = true }) }
             item {
                 SectionCard {
                     Text("Your targets", style = MaterialTheme.typography.titleMedium)

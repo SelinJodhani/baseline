@@ -165,6 +165,7 @@ How Baseline writes:
 - A night is written only once Zepp has readings from at least 90 minutes after you woke up, so it's always the finished night.
 - Copying runs with the hourly refresh and whenever you open the app.
 - **Remove Baseline's data** deletes everything Baseline wrote, and only that.
+- **What's in Health Connect** lets you check the result without any other tool. It shows last night as apps read it, against Zepp (the times and the HRV), and today's steps as apps get them, against Zepp. It also lists every app that writes each kind of data. It needs read access to the same kinds of data, reads only while the page is open, and keeps nothing.
 
 ## 7. Updates
 

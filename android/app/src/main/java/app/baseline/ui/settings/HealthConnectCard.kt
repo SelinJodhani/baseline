@@ -47,7 +47,7 @@ private val HISTORY = listOf(30 to "30 days", 90 to "90 days", 365 to "1 year")
 
 /** Settings → Health Connect: copy Zepp's data in, as the one source, and help switch the Zepp app's own copy off. */
 @Composable
-fun HealthConnectCard(vm: AppViewModel, s: AppSettings, bridgeHasSamples: Boolean) {
+fun HealthConnectCard(vm: AppViewModel, s: AppSettings, bridgeHasSamples: Boolean, onCheck: () -> Unit) {
     val ctx = LocalContext.current
     val sync = (ctx.applicationContext as BaselineApp).healthSync
     val status by sync.status.collectAsStateWithLifecycle()
@@ -139,6 +139,7 @@ fun HealthConnectCard(vm: AppViewModel, s: AppSettings, bridgeHasSamples: Boolea
                 FilledTonalButton(onClick = { scope.launch { sync.run() } }, enabled = !status.running) { Text("Write now") }
                 OutlinedButton(onClick = { confirmRemove = true }, enabled = !status.running) { Text("Remove Baseline's data") }
             }
+            TextButton(onClick = onCheck) { Text("What's in Health Connect") }
         }
 
         if (zeppWrites.isNotEmpty()) {

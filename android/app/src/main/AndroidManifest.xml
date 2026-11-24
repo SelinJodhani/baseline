@@ -5,7 +5,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- In-app updates from GitHub Releases (the user confirms each install). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <!-- Health Connect: write-only. Baseline copies Zepp's readings in; it never reads other apps' data. -->
+    <!-- Health Connect: Baseline writes Zepp's readings in. It reads the same kinds back only on the
+         "What's in Health Connect" check page, while it's open, and keeps nothing it reads. -->
     <uses-permission android:name="android.permission.health.WRITE_HEART_RATE" />
     <uses-permission android:name="android.permission.health.WRITE_HEART_RATE_VARIABILITY" />
     <uses-permission android:name="android.permission.health.WRITE_OXYGEN_SATURATION" />
@@ -17,6 +18,17 @@
     <uses-permission android:name="android.permission.health.WRITE_ACTIVE_CALORIES_BURNED" />
     <uses-permission android:name="android.permission.health.WRITE_EXERCISE" />
     <uses-permission android:name="android.permission.health.WRITE_WEIGHT" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY" />
+    <uses-permission android:name="android.permission.health.READ_OXYGEN_SATURATION" />
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_RESPIRATORY_RATE" />
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_DISTANCE" />
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
+    <uses-permission android:name="android.permission.health.READ_WEIGHT" />
 
     <!-- "Open Zepp" button: the watch syncs to the cloud through the Zepp phone app. -->
     <queries>
@@ -24,6 +36,14 @@
         <package android:name="com.xiaomi.hm.health" />
         <!-- Health Connect (the APK on Android 13 and older). -->
         <package android:name="com.google.android.apps.healthdata" />
+        <!-- Name the other apps that write to Health Connect on the check page. -->
+        <intent>
+            <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+            <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+        </intent>
     </queries>
 
     <application
