@@ -150,6 +150,22 @@ Your data passes through three hops: **watch → Zepp phone app → Zepp cloud �
   - Pull-to-refresh does the same thing when the last check is more than 10 minutes old.
 - If a sync finds nothing new, the card tells you so. That almost always means the watch hasn't synced to the Zepp app yet.
 
+### Google Health and other apps (Health Connect)
+
+**Settings → Health Connect → Write Zepp data to Health Connect** copies Zepp's readings into Health Connect exactly as recorded: per-minute heart rate, HRV (RMSSD) and SpO₂, each night with its stages, resting heart rate, breathing rate, daily steps, distance and active calories, workouts and weigh-ins. It needs bridge 0.6 or later.
+
+Make Baseline the only writer of these metrics. The Zepp app's own Health Connect sync writes a half-finished night at about 5 am and extends it later, and Google Health keeps the first copy, so you see a 3-hour "nap". The Health Connect card shows a reminder while Zepp still has access. To switch it off:
+
+1. Turn Baseline's copy on. It writes the last 30 days; you can choose 90 days or a year instead.
+2. Open **Zepp's access** from the card, and turn everything off.
+3. In Health Connect, open **App permissions → Zepp → Delete app data**, so the old Zepp copies go. Baseline's copy of the same days is already there.
+
+How Baseline writes:
+- Every record has a fixed ID, so writing it again updates it instead of duplicating it.
+- A night is written only once Zepp has readings from at least 90 minutes after you woke up, so it's always the finished night.
+- Copying runs with the hourly refresh and whenever you open the app.
+- **Remove Baseline's data** deletes everything Baseline wrote, and only that.
+
 ## 7. Updates
 
 Baseline updates itself from this repo's GitHub Releases:

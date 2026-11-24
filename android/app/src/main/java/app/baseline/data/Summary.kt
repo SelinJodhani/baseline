@@ -32,7 +32,11 @@ data class Summary(
 }
 
 @Serializable
-data class Capabilities(val sync: Boolean = false)
+data class Capabilities(
+    val sync: Boolean = false,
+    /** Bridge 0.6+: `/api/v1/samples` serves raw readings (used to write Health Connect). */
+    val samples: Boolean = false,
+)
 
 @Serializable
 data class Freshness(val lastReadingAt: Long? = null, val libraryModifiedAt: Long? = null)

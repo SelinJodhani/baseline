@@ -143,6 +143,25 @@ class Repository(private val context: Context, private val store: SecureStore) {
         }
     }
 
+    /** Raw readings for [from, to) (epoch seconds) from bridge 0.6+. Throws on any failure. */
+    suspend fun fetchSamples(from: Long, to: Long): Samples = withContext(Dispatchers.IO) {
+        val settings = store.settings.first()
+        if (settings.demo || settings.serverUrl.isBlank()) throw BridgeException("Not connected to a bridge")
+        val conn = openConnection("${settings.serverUrl.trimEnd('/')}/api/v1/samples?from=$from&to=$to", settings.token)
+        conn.readTimeout = 90_000
+        try {
+            when (val code = conn.responseCode) {
+                200 -> Summary.json.decodeFromString(Samples.serializer(), conn.inputStream.use { it.readBytes().decodeToString() })
+                401 -> throw BridgeException("The bridge rejected the token")
+                404 -> throw BridgeException("This bridge is too old to share raw readings — update it to 0.6 or later")
+                503 -> throw BridgeException("The bridge couldn't read ZeppBridge — check its logs")
+                else -> throw BridgeException("The bridge answered HTTP $code")
+            }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     fun clear() {
         cacheFile.delete(); metaFile.delete()
         _state.value = DataState()

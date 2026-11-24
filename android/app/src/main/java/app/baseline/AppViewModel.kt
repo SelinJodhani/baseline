@@ -75,6 +75,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (repo.refresh() == null) {
             TodayWidget.updateAll(getApplication())
             if (!previewsPublished) { previewsPublished = true; TodayWidget.publishPreviews(getApplication()) }
+            baseline.healthSync.kick()
         }
     }
 
@@ -82,6 +83,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun syncNow() = viewModelScope.launch {
         repo.syncFromCloud()
         TodayWidget.updateAll(getApplication())
+        baseline.healthSync.kick(minGapSec = 60)
     }
 
     /**

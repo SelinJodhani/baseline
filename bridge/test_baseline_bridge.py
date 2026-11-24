@@ -105,7 +105,7 @@ class NadirTest(unittest.TestCase):
         night, nap_out = s["sleeps"]
         self.assertEqual(night["hrNadir"]["bpm"], 48)
         self.assertNotIn("hrNadir", nap_out)
-        self.assertEqual(s["bridgeVersion"], "0.5.0")
+        self.assertEqual(s["bridgeVersion"], b.VERSION)
         # Nights that start before the per-minute export window get nothing (a partial night would mislead).
         s2 = b.build_summary(long_doc, SHORT, start="2026-01-01", end="2026-01-02", data_modified=None,
                              hr_doc=hr_doc, hr_from="2026-01-03")
@@ -270,6 +270,53 @@ class ChunkTest(unittest.TestCase):
         self.assertEqual(len(doc["data"]["daily_metrics"]), 2)
 
 
+FULL = {"data": {"metric_samples": [
+    {"metric": "heart_rate", "timestamp": "2026-01-02T00:00:00+00:00", "value": 61.0, "source_scope": "user_fused"},
+    {"metric": "heart_rate", "timestamp": "2026-01-02T00:00:00+00:00", "value": 58.0, "source_scope": "device"},
+    {"metric": "heart_rate", "timestamp": "2026-01-02T00:01:00+00:00", "value": 400.0, "source_scope": "device"},
+    {"metric": "hrv_rmssd", "timestamp": "2026-01-02T00:02:00+00:00", "value": 71.4, "source_scope": "device"},
+    {"metric": "hrv", "timestamp": "2026-01-02T00:02:00+00:00", "value": 99.0, "source_scope": "device"},
+    {"metric": "spo2", "timestamp": "2026-01-02T00:03:30+00:00", "value": 97.0, "source_scope": "device"},
+    {"metric": "spo2", "timestamp": "2026-01-03T00:00:00+00:00", "value": 96.0, "source_scope": "device"},
+    {"metric": "stress", "timestamp": "2026-01-02T00:04:00+00:00", "value": 30.0, "source_scope": "device"},
+]}}
+T0 = 1767312000  # 2026-01-02T00:00:00Z
+
+
+class SamplesTest(unittest.TestCase):
+    def test_build_samples(self):
+        out = b.build_samples(FULL, T0, T0 + 86400)
+        self.assertEqual(out["heartRate"], [[T0, 58]])          # device wins; 400 bpm dropped
+        self.assertEqual(out["hrv"], [[T0 + 120, 71.4]])        # RMSSD only, not the spot "hrv" reading
+        self.assertEqual(out["spo2"], [[T0 + 210, 97]])         # the next day's reading is outside the window
+        self.assertNotIn("stress", out)
+
+    def test_extra_library_fills_gaps(self):
+        older = {"data": {"metric_samples": [
+            {"metric": "heart_rate", "timestamp": "2026-01-02T00:00:00+00:00", "value": 70.0, "source_scope": "device"},
+            {"metric": "heart_rate", "timestamp": "2026-01-02T05:00:00+00:00", "value": 66.0, "source_scope": "device"},
+        ]}}
+        src = b.SampleSource(lambda s, e, t: FULL, "/nonexistent", extras=[("old", lambda s, e, t: older)])
+        doc = src.get(T0, T0 + 86400)
+        self.assertEqual(doc["heartRate"], [[T0, 58], [T0 + 18000, 66]])
+        self.assertEqual(doc["lastReadingAt"], T0 + 18000)
+        self.assertEqual(doc["schema"], "baseline.samples.v1")
+        self.assertIsNone(doc["device"])
+
+    def test_device_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "devices.json"), "w") as f:
+                json.dump({"profiles": [{"name": "157", "canonical_name": "Amazfit Helio Strap"}]}, f)
+            self.assertEqual(b.device_name(d), "Amazfit Helio Strap")
+
+    def test_window(self):
+        self.assertEqual(b.parse_window("", 1000000), (1000000 - 86400, 1000000))
+        self.assertEqual(b.parse_window("from=10&to=20", 1000000), (10, 20))
+        for q in ("from=20&to=10", "from=0&to=9999999", "from=x"):
+            with self.assertRaises(ValueError):
+                b.parse_window(q, 10000000)
+
+
 class HttpTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -281,7 +328,8 @@ class HttpTest(unittest.TestCase):
             return LONG if "sleep" in types else SHORT
 
         cache = b.SummaryCache(exporter, cls.tmp.name)
-        cls.srv = ThreadingHTTPServer(("127.0.0.1", 0), b.make_handler(cache, TOKEN, 400))
+        samples = b.SampleSource(lambda s, e, t: FULL, cls.tmp.name)
+        cls.srv = ThreadingHTTPServer(("127.0.0.1", 0), b.make_handler(cache, TOKEN, 400, samples=samples))
         threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
         cls.base = f"http://127.0.0.1:{cls.srv.server_address[1]}"
 
@@ -315,6 +363,17 @@ class HttpTest(unittest.TestCase):
             self.req("/api/v1/summary?days=30", headers={"If-None-Match": r.headers["ETag"]})
         self.assertEqual(cm.exception.code, 304)
         self.assertEqual(self.calls, calls)  # served from cache
+
+    def test_samples(self):
+        r = self.req(f"/api/v1/samples?from={T0}&to={T0 + 86400}", headers={"Accept-Encoding": "gzip"})
+        doc = json.loads(gzip.decompress(r.read()))
+        self.assertEqual(doc["hrv"], [[T0 + 120, 71.4]])
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            self.req(f"/api/v1/samples?from={T0}&to={T0 - 5}")
+        self.assertEqual(cm.exception.code, 400)
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            self.req("/api/v1/samples", token="wrong")
+        self.assertEqual(cm.exception.code, 401)
 
     def test_bad_days(self):
         with self.assertRaises(urllib.error.HTTPError) as cm:

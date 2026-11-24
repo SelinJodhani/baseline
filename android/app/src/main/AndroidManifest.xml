@@ -5,11 +5,25 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- In-app updates from GitHub Releases (the user confirms each install). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Health Connect: write-only. Baseline copies Zepp's readings in; it never reads other apps' data. -->
+    <uses-permission android:name="android.permission.health.WRITE_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.WRITE_HEART_RATE_VARIABILITY" />
+    <uses-permission android:name="android.permission.health.WRITE_OXYGEN_SATURATION" />
+    <uses-permission android:name="android.permission.health.WRITE_SLEEP" />
+    <uses-permission android:name="android.permission.health.WRITE_RESTING_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.WRITE_RESPIRATORY_RATE" />
+    <uses-permission android:name="android.permission.health.WRITE_STEPS" />
+    <uses-permission android:name="android.permission.health.WRITE_DISTANCE" />
+    <uses-permission android:name="android.permission.health.WRITE_ACTIVE_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.WRITE_EXERCISE" />
+    <uses-permission android:name="android.permission.health.WRITE_WEIGHT" />
 
     <!-- "Open Zepp" button: the watch syncs to the cloud through the Zepp phone app. -->
     <queries>
         <package android:name="com.huami.watch.hmwatchmanager" />
         <package android:name="com.xiaomi.hm.health" />
+        <!-- Health Connect (the APK on Android 13 and older). -->
+        <package android:name="com.google.android.apps.healthdata" />
     </queries>
 
     <application
@@ -39,7 +53,23 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="baseline" android:host="connect" />
             </intent-filter>
+            <!-- Health Connect's "why does this app want access" link (Android 13 and older). -->
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
         </activity>
+
+        <!-- Health Connect's "why does this app want access" link (Android 14+). Opens the app. -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
 
         <!-- Home-screen / lock-screen widgets (Glance). Refreshed by RefreshWorker and on app refresh. -->
         <provider

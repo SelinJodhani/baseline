@@ -21,6 +21,7 @@ class RefreshWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
         if (app.repository.state.value.summary == null) app.repository.loadInitial()
         app.repository.refresh()
         TodayWidget.updateAll(applicationContext)
+        app.healthSync.run() // no-op unless Health Connect copying is on
         return Result.success()
     }
 

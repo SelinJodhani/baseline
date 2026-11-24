@@ -1,0 +1,119 @@
+package app.baseline.health
+
+import app.baseline.data.Day
+import app.baseline.data.Sleep
+import app.baseline.data.Summary
+import app.baseline.data.Weight
+import app.baseline.data.Workout
+import kotlinx.serialization.json.JsonPrimitive
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.time.LocalDate
+import java.time.ZoneId
+
+class HcPlannerTest {
+    private val ist = ZoneId.of("Asia/Kolkata")
+    private fun t(s: String) = java.time.LocalDateTime.parse(s).atZone(ist).toEpochSecond()
+    private fun stage(a: String, b: String, k: String) = listOf(JsonPrimitive(t(a)), JsonPrimitive(t(b)), JsonPrimitive(k))
+
+    // The 24 Nov night: Zepp's 4:52 am copy, and the finished one.
+    private val partial = Sleep(start = t("2026-11-24T02:02"), end = t("2026-11-24T04:52"), score = 60,
+        stages = listOf(stage("2026-11-24T02:02", "2026-11-24T03:00", "light"), stage("2026-11-24T03:00", "2026-11-24T04:52", "deep")))
+    private val full = Sleep(start = t("2026-11-24T02:00"), end = t("2026-11-24T09:29"), score = 82,
+        stages = listOf(
+            stage("2026-11-24T02:00", "2026-11-24T03:00", "light"),
+            stage("2026-11-24T02:50", "2026-11-24T05:00", "deep"),   // overlaps the previous one: trimmed
+            stage("2026-11-24T05:00", "2026-11-24T09:40", "rem"),    // runs past the end: clipped
+        ))
+
+    @Test fun `a night isn't written until Zepp has readings well after it ended`() {
+        val s = Summary(sleeps = listOf(partial))
+        // Zepp synced at 4:54 am: last reading two minutes after the "end", so the night is still open.
+        assertTrue(HcPlanner.settledNights(s, 0, t("2026-11-24T04:54"), t("2026-11-24T05:00")).isEmpty())
+        val done = Summary(sleeps = listOf(full))
+        assertTrue(HcPlanner.settledNights(done, 0, t("2026-11-24T10:30"), t("2026-11-24T11:00")).isEmpty())
+        val nights = HcPlanner.settledNights(done, 0, t("2026-11-24T11:00"), t("2026-11-24T11:05"))
+        assertEquals(1, nights.size)
+        assertEquals(listOf(
+            HcPlanner.Stage(t("2026-11-24T02:00"), t("2026-11-24T03:00"), "light"),
+            HcPlanner.Stage(t("2026-11-24T03:00"), t("2026-11-24T05:00"), "deep"),
+            HcPlanner.Stage(t("2026-11-24T05:00"), t("2026-11-24T09:29"), "rem"),
+        ), nights[0].stages)
+    }
+
+    @Test fun `overlapping sessions from two accounts become one night, the longer`() {
+        val a = Sleep(start = t("2026-10-26T01:08"), end = t("2026-10-26T09:28"))
+        val b = Sleep(start = t("2026-10-26T06:36"), end = t("2026-10-26T12:33"))
+        val nap = Sleep(start = t("2026-10-26T15:00"), end = t("2026-10-26T15:40"))
+        val nights = HcPlanner.settledNights(Summary(sleeps = listOf(b, nap, a)), 0, t("2026-10-27T00:00"), t("2026-10-27T00:00"))
+        assertEquals(listOf(a.start, nap.start), nights.map { it.start })
+    }
+
+    @Test fun `heart rate is grouped by hour and the open hour ends at its last reading`() {
+        val now = t("2026-11-24T10:20")
+        val rows = listOf(
+            listOf(t("2026-11-24T08:31").toDouble(), 60.0), listOf(t("2026-11-24T09:10").toDouble(), 61.0),
+            listOf(t("2026-11-24T10:15").toDouble(), 75.0), listOf(t("2026-11-24T10:16").toDouble(), 400.0),
+        )
+        val hours = HcPlanner.hrHours(rows, now)
+        assertEquals(2, hours.size) // IST hours start at :30 UTC-aligned; 08:31 and 09:10 share one
+        assertEquals(hours[0].start + 3600, hours[0].end)
+        assertEquals(t("2026-11-24T10:15") + 1, hours[1].end)
+        assertEquals(listOf(75.0), hours[1].samples.map { it.v }) // 400 bpm dropped
+    }
+
+    @Test fun `HRV outside Health Connect's range is dropped, not clamped`() {
+        val pts = HcPlanner.points(listOf(listOf(1.0, 0.5), listOf(2.0, 76.0), listOf(3.0, 250.0)), 1.0, 200.0)
+        assertEquals(listOf(HcPlanner.Point(2, 76.0)), pts)
+    }
+
+    @Test fun `daily totals cover the local day and today ends now`() {
+        val now = t("2026-11-24T19:30")
+        val s = Summary(days = listOf(
+            Day("2026-11-23", steps = 12230.0, distanceM = 8445.0, activeCalories = 357.0),
+            Day("2026-11-24", steps = 2737.0),
+            Day("2026-11-25", steps = 0.0),
+        ))
+        val d = HcPlanner.dayTotals(s, LocalDate.parse("2026-11-01"), now, ist)
+        assertEquals(2, d.size)
+        assertEquals(t("2026-11-23T00:00"), d[0].start)
+        assertEquals(t("2026-11-24T00:00"), d[0].end)
+        assertEquals(now, d[1].end)
+        assertNull(d[1].distanceM)
+    }
+
+    @Test fun `resting HR and breathing wait for the night, past days without one get noon`() {
+        val today = LocalDate.parse("2026-11-24")
+        val s = Summary(days = listOf(
+            Day("2026-11-22", restingHr = 59.0, respRate = 18.0),
+            Day("2026-11-24", restingHr = 58.0, respRate = 17.0),
+        ))
+        val since = LocalDate.parse("2026-11-01")
+        val noNight = HcPlanner.restingHr(s, since, emptyMap(), today, ist)
+        assertEquals(listOf(HcPlanner.Vital(LocalDate.parse("2026-11-22"), t("2026-11-22T12:00"), 59.0)), noNight)
+        assertTrue(HcPlanner.breathing(s, since, emptyMap()).isEmpty())
+
+        val night = HcPlanner.Night(t("2026-11-24T02:00"), t("2026-11-24T09:29"), emptyList(), 82)
+        val main = HcPlanner.mainNights(listOf(night), ist)
+        assertEquals(t("2026-11-24T09:29"), HcPlanner.restingHr(s, since, main, today, ist).last().at)
+        assertEquals((night.start + night.end) / 2, HcPlanner.breathing(s, since, main).single().at)
+    }
+
+    @Test fun `workouts need an end, weights a plausible value`() {
+        val s = Summary(
+            workouts = listOf(Workout("1", "strength", 100, 200), Workout("2", "walking", 300, null)),
+            weights = listOf(Weight(150, 72.3), Weight(160, 0.0)),
+        )
+        assertEquals(listOf("1"), HcPlanner.workouts(s, 0, 1000).map { it.id })
+        assertEquals(listOf(HcPlanner.Point(150, 72.3)), HcPlanner.weights(s, 0, 1000))
+    }
+
+    @Test fun `zepp workout types map to Health Connect types`() {
+        assertEquals(androidx.health.connect.client.records.ExerciseSessionRecord.EXERCISE_TYPE_RUNNING_TREADMILL, HealthConnectSync.exerciseType("treadmill"))
+        assertEquals(androidx.health.connect.client.records.ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT, HealthConnectSync.exerciseType("unknown:15"))
+        assertEquals("Pool swimming", HealthConnectSync.title("pool_swimming"))
+        assertEquals("Workout", HealthConnectSync.title("unknown:15"))
+    }
+}

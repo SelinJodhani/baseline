@@ -104,6 +104,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                     }
                 }
             }
+            item { HealthConnectCard(vm, s, bridgeHasSamples = data.summary?.capabilities?.samples == true) }
             item {
                 SectionCard {
                     Text("Your targets", style = MaterialTheme.typography.titleMedium)

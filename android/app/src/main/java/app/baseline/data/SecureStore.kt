@@ -53,6 +53,10 @@ data class AppSettings(
     val birthYear: Int? = null,
     /** Optional, stays on this device: "female", "male" or "" (not set). Only used for VO₂max percentiles. */
     val sex: String = "",
+    /** Copy Zepp's data (via the bridge) into Health Connect, as the only writer of these metrics. */
+    val healthConnect: Boolean = false,
+    /** How many days back the first Health Connect copy goes. */
+    val healthConnectDays: Int = 30,
 )
 
 /**

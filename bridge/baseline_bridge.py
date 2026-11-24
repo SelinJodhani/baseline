@@ -6,7 +6,9 @@ It shells out to `zeppbridge-cli export --format json` (the stable, documented
 document the Baseline Android app understands (`baseline.v1`). It also reads per-minute heart
 rate (`--detail full`, heart_rate only) for the last ~9 months and sends only small summaries of it:
 each night's lowest heart rate and its time (`hrNadir`, last 30 nights), and per day the lowest
-heart rate (`minHr`) and Fitbit-style Active Zone Minutes (`azm`). It never writes to the
+heart rate (`minHr`) and Fitbit-style Active Zone Minutes (`azm`). `/api/v1/samples` hands out the raw
+per-minute heart rate, HRV (RMSSD) and SpO2 readings for a time window, so the app can copy Zepp's data into
+Health Connect as recorded. It never writes to the
 ZeppBridge database, never talks to the Zepp cloud, and has no dependencies
 beyond the Python standard library.
 
@@ -44,7 +46,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 SCHEMA = "baseline.v1"
 
 LONG_TYPES = "daily_activity,recovery,pai,sleep,workouts,vo2max,weight,training_load"
@@ -552,13 +554,117 @@ class SummaryCache:
                     log.warning("extra library %s skipped: %s", folder, exc)
             summary = build_summary(long_doc, short_doc, start=start, end=end, data_modified=mtime,
                                     hr_doc=hr_doc, hr_from=hr_from, extra_docs=extra_docs)
-            summary["capabilities"] = {"sync": self.sync_enabled}
+            summary["capabilities"] = {"sync": self.sync_enabled, "samples": True}
             body = json.dumps(summary, separators=(",", ":"), ensure_ascii=False).encode()
             entry = (etag, body, gzip.compress(body, 6))
             self.entries[days] = entry
             log.info("built summary days=%d bytes=%d gz=%d in %.0fms",
                      days, len(body), len(entry[2]), (time.monotonic() - t0) * 1000)
             return entry
+
+
+# -------------------------------------------------------------------- samples
+
+# `GET /api/v1/samples?from=<epoch>&to=<epoch>`: the raw readings behind the summary, for the app's Health Connect
+# writer. Zepp is the source of truth, so the app copies these as recorded instead of re-deriving them.
+SAMPLES_SCHEMA = "baseline.samples.v1"
+SAMPLE_TYPES = "heart_rate,hrv_rmssd,spo2"
+SAMPLES_MAX_DAYS = 32
+# ZeppBridge metric -> (response key, plausible range). Out-of-range readings are dropped, never clamped.
+SAMPLE_METRICS = {
+    "heart_rate": ("heartRate", HR_PLAUSIBLE),
+    "hrv_rmssd": ("hrv", (1.0, 300.0)),
+    "spo2": ("spo2", (50.0, 100.0)),
+}
+
+
+def build_samples(doc: dict, start: int, end: int) -> dict[str, list]:
+    """Per-reading series in [start, end): {"heartRate", "hrv", "spo2"} as sorted [epoch, value] pairs, one reading
+    per metric and timestamp (a device reading beats a fused one)."""
+    best: dict[tuple[str, int], tuple[int, float]] = {}
+    for r in (doc.get("data") or {}).get("metric_samples", []):
+        spec = SAMPLE_METRICS.get(r.get("metric"))
+        if spec is None or r.get("value") is None:
+            continue
+        t = _epoch(r.get("timestamp"))
+        try:
+            v = float(r["value"])
+        except (TypeError, ValueError):
+            continue
+        if t is None or not start <= t < end or not spec[1][0] <= v <= spec[1][1]:
+            continue
+        rank = SCOPE_RANK.get(r.get("source_scope") or "unknown", 2)
+        key = (spec[0], t)
+        if key not in best or rank < best[key][0]:
+            best[key] = (rank, v)
+    out: dict[str, list] = {name: [] for name, _ in SAMPLE_METRICS.values()}
+    for (name, t), (_, v) in sorted(best.items(), key=lambda kv: kv[0][1]):
+        out[name].append([t, _round(v, 1)])
+    return out
+
+
+def device_name(data_dir: str) -> str | None:
+    """The watch/strap model ZeppBridge knows about (e.g. "Amazfit Helio Strap"), from its devices.json."""
+    try:
+        with open(os.path.join(data_dir, "devices.json"), encoding="utf-8") as f:
+            doc = json.load(f)
+        for p in doc.get("profiles") or []:
+            name = p.get("canonical_name") or p.get("display_name")
+            if isinstance(name, str) and name.strip():
+                return name.strip()
+    except (OSError, ValueError, AttributeError):
+        pass
+    return None
+
+
+class SampleSource:
+    """Exports raw readings for a time window on request (no cache: windows are small and always end 'now')."""
+
+    def __init__(self, exporter: Exporter, data_dir: str, extras: list[tuple[str, Exporter]] | None = None):
+        """`exporter` must return a --detail full export. `extras` are (data_dir, full exporter) of other accounts,
+        merged in under this one."""
+        self.exporter, self.data_dir, self.extras = exporter, data_dir, extras or []
+        self.lock = threading.Lock()  # one heavy export at a time
+
+    def get(self, start: int, end: int) -> dict:
+        tz = _local_tz()
+        first = dt.datetime.fromtimestamp(start, tz).date().isoformat()
+        last = dt.datetime.fromtimestamp(end - 1, tz).date().isoformat()
+        with self.lock:
+            series = build_samples(self.exporter(first, last, SAMPLE_TYPES), start, end)
+            for folder, ex in self.extras:
+                try:
+                    extra = build_samples(ex(first, last, SAMPLE_TYPES), start, end)
+                except Exception as exc:  # an extra library never blocks the main one
+                    log.warning("extra library %s skipped for samples: %s", folder, exc)
+                    continue
+                for key, rows in extra.items():
+                    merged = merge_readings([(t, v) for t, v in series[key]], [(t, v) for t, v in rows])
+                    series[key] = [[t, v] for t, v in merged]
+        last_at = max((rows[-1][0] for rows in series.values() if rows), default=None)
+        return {
+            "schema": SAMPLES_SCHEMA,
+            "bridgeVersion": VERSION,
+            "generatedAt": int(time.time()),
+            "from": start,
+            "to": end,
+            "device": device_name(self.data_dir),
+            "lastReadingAt": last_at,
+            **series,
+        }
+
+
+def parse_window(query: str, now: int) -> tuple[int, int]:
+    """`from`/`to` epoch seconds from a query string; `to` defaults to now, `from` to a day before `to`."""
+    q = parse_qs(query)
+    end = int(q.get("to", [str(now)])[0])
+    start = int(q.get("from", [str(end - 86400)])[0])
+    end = min(end, now + 60)
+    if start >= end:
+        raise ValueError("from must be before to")
+    if end - start > SAMPLES_MAX_DAYS * 86400:
+        raise ValueError(f"ask for at most {SAMPLES_MAX_DAYS} days at a time")
+    return start, end
 
 
 # ----------------------------------------------------------------------- sync
@@ -615,7 +721,8 @@ class SyncJob:
 
 # ----------------------------------------------------------------------- http
 
-def make_handler(cache: SummaryCache, token: str, max_days: int, sync: "SyncJob | None" = None):
+def make_handler(cache: SummaryCache, token: str, max_days: int, sync: "SyncJob | None" = None,
+                 samples: "SampleSource | None" = None):
     sync = sync or SyncJob(False, 120)
     token_b = token.encode()
 
@@ -661,6 +768,8 @@ def make_handler(cache: SummaryCache, token: str, max_days: int, sync: "SyncJob 
                 return self._send(200, json.dumps({"ok": True, "version": VERSION, "schema": SCHEMA, "sync": sync.enabled}).encode())
             if url.path == "/api/v1/sync":
                 return self._send(200, json.dumps(sync.status()).encode())
+            if url.path == "/api/v1/samples":
+                return self._samples(url.query)
             if url.path != "/api/v1/summary":
                 return self._error(404, "not found")
             try:
@@ -682,6 +791,22 @@ def make_handler(cache: SummaryCache, token: str, max_days: int, sync: "SyncJob 
             return self._send(200, body, headers=headers)
 
         do_HEAD = do_GET
+
+        def _samples(self, query: str) -> None:
+            if samples is None:
+                return self._error(404, "not found")
+            try:
+                start, end = parse_window(query, int(time.time()))
+            except ValueError as exc:
+                return self._error(400, str(exc))
+            try:
+                body = json.dumps(samples.get(start, end), separators=(",", ":")).encode()
+            except Exception as exc:  # export failed: tell the app, keep running
+                log.error("samples failed: %s", exc)
+                return self._error(503, "ZeppBridge export failed — check the bridge logs")
+            if "gzip" in (self.headers.get("Accept-Encoding") or ""):
+                return self._send(200, gzip.compress(body, 6), headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
+            return self._send(200, body)
 
         def do_POST(self) -> None:  # noqa: N802
             url = urlparse(self.path)
@@ -732,7 +857,9 @@ def main() -> int:
     sync = SyncJob(os.environ.get("BASELINE_ALLOW_SYNC", "1") not in ("0", "false", "no"),
                    int(os.environ.get("BASELINE_SYNC_COOLDOWN", "120")))
     cache.sync_enabled = sync.enabled
-    server = ThreadingHTTPServer((bind, port), make_handler(cache, token, max_days, sync))
+    samples = SampleSource(lambda s, e, t: cli_exporter(s, e, t, "full"), os.environ.get("ZEPPBRIDGE_DATA_DIR", "/data"),
+                           extras=[(folder, full) for folder, _, full in extras])
+    server = ThreadingHTTPServer((bind, port), make_handler(cache, token, max_days, sync, samples))
     log.info("Baseline Bridge %s listening on %s:%d (TZ=%s, on-demand sync %s, %d extra libraries)", VERSION, bind, port,
              os.environ.get("TZ", "unset"), "on" if sync.enabled else "off", len(extras))
     try:
