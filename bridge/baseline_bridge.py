@@ -381,22 +381,46 @@ def _overlap(a: tuple[int, int], b: tuple[int, int]) -> float:
     return inter / shorter if shorter > 0 and inter > 0 else 0.0
 
 
+def _span(x: dict) -> tuple[int, int] | None:
+    a, b = _epoch(x.get("start_time")), _epoch(x.get("end_time"))
+    return (a, b) if a is not None and b is not None and b > a else None
+
+
+def _richer(a: dict, b: dict) -> bool:
+    """Is sleep session a better record of the night than b? Stages first, then the longer one."""
+    sa, sb = bool(a.get("stages")), bool(b.get("stages"))
+    if sa != sb:
+        return sa
+    return (a.get("duration_minutes") or 0) > (b.get("duration_minutes") or 0)
+
+
 def merge_sessions(primary: list[dict], extra: list[dict]) -> list[dict]:
-    """Sleep sessions from two accounts: one per night. Where two overlap by more than half, the one with sleep
-    stages wins (an imported CSV night has none); on a tie the primary account wins."""
-    def span(x: dict) -> tuple[int, int] | None:
-        a, b = _epoch(x.get("start_time")), _epoch(x.get("end_time"))
-        return (a, b) if a is not None and b is not None and b > a else None
-    out = [x for x in primary if span(x)]
+    """Sleep sessions from two accounts, one record per night. Two sessions that overlap at all are the same night
+    (you can't sleep twice at once). The one with sleep stages wins; when neither has stages the extra account's
+    cloud record wins, because the main library's copy of that period is usually an imported CSV (which can also
+    be shifted by a time-zone slip, so even a small overlap counts)."""
+    out = [x for x in primary if _span(x)]
     for e in extra:
-        se = span(e)
+        se = _span(e)
         if se is None:
             continue
-        clash = next((i for i, p in enumerate(out) if _overlap(span(p), se) > 0.5), None)
+        clash = next((i for i, p in enumerate(out) if _overlap(_span(p), se) > 0), None)
         if clash is None:
             out.append(e)
-        elif not out[clash].get("stages") and e.get("stages"):
+        elif e.get("stages") or not out[clash].get("stages"):
             out[clash] = e
+    return out
+
+
+def dedupe_sessions(sessions: list[dict]) -> list[dict]:
+    """Within one list: overlapping sessions are one night; keep the richer record."""
+    out: list[dict] = []
+    for x in sorted((x for x in sessions if _span(x)), key=lambda x: _span(x)[0]):
+        if out and _overlap(_span(out[-1]), _span(x)) > 0:
+            if _richer(x, out[-1]):
+                out[-1] = x
+            continue
+        out.append(x)
     return out
 
 
@@ -450,7 +474,7 @@ def build_summary(long_doc: dict, short_doc: dict, *, start: str, end: str,
     hr_since = None
     if hr_from:
         hr_since = int(dt.datetime.combine(dt.date.fromisoformat(hr_from), dt.time(), _local_tz()).timestamp())
-    sleeps = build_sleeps(sessions, hr, hr_since)
+    sleeps = build_sleeps(dedupe_sessions(sessions), hr, hr_since)
     if hr:
         profile_max = next((d["maxHr"] for d in reversed(days) if "maxHr" in d), None)
         by_date = {d["date"]: d for d in days}

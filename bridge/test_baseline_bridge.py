@@ -201,6 +201,22 @@ class MergeTest(unittest.TestCase):
         self.assertEqual(len(s["workouts"]), 2)                      # the run once, plus the old walk
         self.assertEqual(len(s["weights"]), 1)                       # same weigh-in once
 
+    def test_shifted_import_and_inner_duplicates(self):
+        # The CSV import put a night 5 h late (time-zone slip); it overlaps the real night by under half.
+        shifted = {"data": dict(self.CURRENT["data"], sleep_sessions=[
+            {"start_time": "2026-07-29T02:29:00+00:00", "end_time": "2026-07-29T09:57:00+00:00", "duration_minutes": 389}])}
+        real = {"data": {"sleep_sessions": [
+            {"start_time": "2026-07-28T21:29:00+00:00", "end_time": "2026-07-29T04:42:00+00:00", "duration_minutes": 430}]}}
+        s = b.build_summary(shifted, SHORT, start="2026-07-01", end="2026-08-01", data_modified=None, extra_docs=[real])
+        self.assertEqual([x["durationMin"] for x in s["sleeps"]], [430])  # the cloud record, once
+        # Two overlapping nights inside one library: the one with stages stays.
+        dup = {"data": {"sleep_sessions": [
+            {"start_time": "2026-10-25T19:38:00+00:00", "end_time": "2026-10-26T03:58:00+00:00", "duration_minutes": 497},
+            {"start_time": "2026-10-26T01:06:00+00:00", "end_time": "2026-10-26T07:03:00+00:00", "duration_minutes": 315,
+             "stages": [{"start_time": "2026-10-26T01:06:00+00:00", "end_time": "2026-10-26T02:00:00+00:00", "stage": "light"}]}]}}
+        s2 = b.build_summary(dup, SHORT, start="2026-10-01", end="2026-11-01", data_modified=None)
+        self.assertEqual([x["durationMin"] for x in s2["sleeps"]], [315])
+
     def test_no_extras_is_unchanged(self):
         a = b.build_summary(self.CURRENT, SHORT, start="2025-01-01", end="2026-11-22", data_modified=None)
         c = b.build_summary(self.CURRENT, SHORT, start="2025-01-01", end="2026-11-22", data_modified=None, extra_docs=[])

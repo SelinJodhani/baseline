@@ -44,8 +44,14 @@ fi
 
 # 2. Sign in against a throwaway folder.
 rm -rf $work && mkdir -p $work && chmod 700 $work
-print "Opening ZeppBridge. Connect \"Zepp account\" and \"Advanced data\" for the $which account, then quit the app (⌘Q)."
-ZEPPBRIDGE_CREDENTIAL_STORE=file ZEPPBRIDGE_DATA_DIR=$work $app/Contents/MacOS/zeppbridge >/dev/null 2>&1 || true
+print "Opening ZeppBridge. Connect \"Zepp account\" and \"Advanced data\" for the $which account."
+ZEPPBRIDGE_CREDENTIAL_STORE=file ZEPPBRIDGE_DATA_DIR=$work $app/Contents/MacOS/zeppbridge >/dev/null 2>&1 &
+pid=$!
+# The app can stay alive in the menu bar after its window closes, so don't wait for it to exit: ask instead.
+read -r "?When both connections show as connected, press Enter here… "
+kill $pid 2>/dev/null || true
+for _ in {1..20}; do kill -0 $pid 2>/dev/null || break; sleep 0.5; done
+kill -9 $pid 2>/dev/null || true
 
 for f in auth.json credentials.json; do
   [[ -s $work/$f ]] || { print -u2 "No $f in $work — did the sign-in finish? Nothing was copied."; rm -rf $work; exit 1; }
