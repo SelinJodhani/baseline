@@ -192,7 +192,7 @@ fun LabsScreen(onBack: () -> Unit, onOpenSettings: () -> Unit, vm: LabsViewModel
             item {
                 SectionLabel("Reports · tap one to see only its results")
                 Spacer(Modifier.height(8.dp))
-                Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
                     Column {
                         data.reportsByDate.asReversed().forEachIndexed { i, r ->
                             if (i > 0) HorizontalDivider(Modifier.padding(start = 20.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .4f))
@@ -236,14 +236,14 @@ private fun SummaryStrip(total: Int, out: Int, title: String, onOut: () -> Unit,
         Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.weight(1f)) {
+            Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.weight(1f)) {
                 Column(Modifier.padding(16.dp)) {
                     Text("${total - out}", style = MaterialTheme.typography.headlineMedium.merge(Numeric), fontWeight = FontWeight.Bold, color = h.great)
                     Text("in range", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             Surface(
-                shape = RoundedCornerShape(20.dp), color = if (out > 0) h.fair.copy(alpha = if (outSelected) .28f else .14f) else MaterialTheme.colorScheme.surfaceContainerLow,
+                shape = RoundedCornerShape(20.dp), color = if (out > 0) h.fair.copy(alpha = if (outSelected) .28f else .14f) else MaterialTheme.colorScheme.surfaceContainer,
                 modifier = Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).clickable(enabled = out > 0, onClick = onOut),
             ) {
                 Column(Modifier.padding(16.dp)) {
@@ -257,7 +257,7 @@ private fun SummaryStrip(total: Int, out: Int, title: String, onOut: () -> Unit,
 
 @Composable
 private fun MarkerGroup(data: LabsData, rows: List<Pair<LabReport, LabMarker>>, latest: LabReport, report: LabReport?, onOpen: (String) -> Unit) {
-    Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
         Column {
             rows.forEachIndexed { i, (r, m) ->
                 if (i > 0) HorizontalDivider(Modifier.padding(start = 20.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .4f))
@@ -282,13 +282,13 @@ private fun MarkerRow(m: LabMarker, history: List<Double>, stale: Boolean, stale
         Box(Modifier.width(4.dp).fillMaxHeight().background(if (out) h.fair else Color.Transparent))
         Row(Modifier.weight(1f).padding(start = 16.dp, end = 20.dp, top = 14.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(m.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(m.name, style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RangeChip(m.status)
                     if (stale) {
                         Spacer(Modifier.width(8.dp))
-                        Text(LabDates.pretty(staleDate), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(LabDates.pretty(staleDate), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 if (m.refLow != null || m.refHigh != null) {
@@ -302,8 +302,8 @@ private fun MarkerRow(m: LabMarker, history: List<Double>, stale: Boolean, stale
             }
             Column(horizontalAlignment = Alignment.End, modifier = Modifier.width(80.dp)) {
                 Text(fmtNum(m.value), style = MaterialTheme.typography.titleLarge.merge(Numeric), fontWeight = FontWeight.Bold, maxLines = 1, color = if (out) h.fair else MaterialTheme.colorScheme.onSurface)
-                if (m.unit.isNotBlank()) Text(m.unit, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                rangeText(m)?.let { Text(it.removeSuffix(" ${m.unit}").removeSuffix(m.unit).trim(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+                if (m.unit.isNotBlank()) Text(m.unit, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                rangeText(m)?.let { Text(it.removeSuffix(" ${m.unit}").removeSuffix(m.unit).trim(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
             }
         }
     }
@@ -415,7 +415,7 @@ private fun MarkerDetail(
         if (history.size > 1) item {
             SectionLabel("History")
             Spacer(Modifier.height(8.dp))
-            Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+            Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
                 Column {
                     history.asReversed().forEachIndexed { i, (r, m) ->
                         if (i > 0) HorizontalDivider(Modifier.padding(start = 20.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .4f))

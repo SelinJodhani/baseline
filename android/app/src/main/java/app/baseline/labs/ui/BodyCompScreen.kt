@@ -182,7 +182,7 @@ fun BodyCompScreen(onBack: () -> Unit, onOpenSettings: () -> Unit, vm: LabsViewM
             item {
                 SectionLabel("Scans · newest first")
                 Spacer(Modifier.height(8.dp))
-                Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
                     Column {
                         val rev = scans.asReversed()
                         rev.forEachIndexed { i, s ->
@@ -199,7 +199,7 @@ fun BodyCompScreen(onBack: () -> Unit, onOpenSettings: () -> Unit, vm: LabsViewM
                                         val ds = listOf("weight" to delta(s.weightKg, prev.weightKg), "fat" to delta(s.bodyFatKg, prev.bodyFatKg), "muscle" to delta(s.skeletalMuscleKg, prev.skeletalMuscleKg))
                                             .filter { it.second != null }
                                         val bits = ds.filter { abs(it.second!!) >= 0.05 }.map { "${it.first} ${signed(it.second!!, "kg")}" }
-                                        if (ds.isNotEmpty()) Text(if (bits.isEmpty()) "No change from the scan before" else bits.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        if (ds.isNotEmpty()) Text(if (bits.isEmpty()) "No change from the scan before" else bits.joinToString(" · "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
                                 if (!vm.demo) IconButton(onClick = { deleting = s }) { Icon(Icons.Outlined.Delete, "Delete scan") }

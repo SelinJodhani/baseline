@@ -79,19 +79,15 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+      app.baseline.ui.common.ProvideEntrance {
         LazyColumn(
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top, bottom = bottom + 24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
-                    Text("Settings", style = MaterialTheme.typography.headlineMedium)
-                }
-            }
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top + 4.dp, bottom = bottom + 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) { app.baseline.ui.common.StaggeredListScope(this).run {
+            item { app.baseline.ui.common.PageHeader("Settings", onBack) }
             item {
                 SectionCard {
-                    Text("Data source", style = MaterialTheme.typography.titleMedium)
+                    Text("Data source", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(8.dp))
                     if (s.demo) {
                         Text("Demo mode — a fictional person's data.", style = MaterialTheme.typography.bodyMedium)
@@ -112,7 +108,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
             item { HealthConnectCard(vm, s, bridgeHasSamples = data.summary?.capabilities?.samples == true, onCheck = { showHcCheck = true }) }
             item {
                 SectionCard {
-                    Text("Your targets", style = MaterialTheme.typography.titleMedium)
+                    Text("Your targets", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(4.dp))
                     Text("Used for sleep debt, bedtime suggestions and progress rings.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))
@@ -123,25 +119,15 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
             }
             item {
                 SectionCard {
-                    Text("Comfort", style = MaterialTheme.typography.titleMedium)
+                    Text("Comfort", style = MaterialTheme.typography.titleLarge)
                     Text("For days when numbers feel like too much.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    ListItem(
-                        headlineContent = { Text("Calm mode") },
-                        supportingContent = { Text("Today shows words instead of numbers. Detail pages keep their numbers.") },
-                        trailingContent = { Switch(checked = s.calmMode, onCheckedChange = { c -> vm.update { it.copy(calmMode = c) } }) },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    )
-                    ListItem(
-                        headlineContent = { Text("Hold sleep until noon") },
-                        supportingContent = { Text("Keep last night's sleep details off Today until the afternoon, so the morning starts with how you feel.") },
-                        trailingContent = { Switch(checked = s.holdSleepScoreUntilAfternoon, onCheckedChange = { c -> vm.update { it.copy(holdSleepScoreUntilAfternoon = c) } }) },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    )
+                    app.baseline.ui.common.SwitchRow("Calm mode", "Today shows words instead of numbers. Detail pages keep their numbers.") { Switch(checked = s.calmMode, onCheckedChange = { c -> vm.update { it.copy(calmMode = c) } }) }
+                    app.baseline.ui.common.SwitchRow("Hold sleep until noon", "Keep last night's sleep details off Today until the afternoon, so the morning starts with how you feel.") { Switch(checked = s.holdSleepScoreUntilAfternoon, onCheckedChange = { c -> vm.update { it.copy(holdSleepScoreUntilAfternoon = c) } }) }
                 }
             }
             item {
                 SectionCard {
-                    Text("Widgets", style = MaterialTheme.typography.titleMedium)
+                    Text("Widgets", style = MaterialTheme.typography.titleLarge)
                     Text("Glanceable health on your home screen — and on the lock screen where your phone supports it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))
                     val widgets = listOf(
@@ -169,20 +155,14 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
             }
             item {
                 SectionCard {
-                    Text("Appearance", style = MaterialTheme.typography.titleMedium)
+                    Text("Appearance", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(12.dp))
                     val modes = listOf("system" to "System", "light" to "Light", "dark" to "Dark")
-                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                        modes.forEachIndexed { i, (k, l) ->
-                            SegmentedButton(selected = s.theme == k, onClick = { vm.update { it.copy(theme = k) } }, shape = SegmentedButtonDefaults.itemShape(i, modes.size)) { Text(l) }
-                        }
-                    }
-                    ListItem(
-                        headlineContent = { Text("Wallpaper colours") },
-                        supportingContent = { Text("Material You on Android 12+") },
-                        trailingContent = { Switch(checked = s.dynamicColor, onCheckedChange = { c -> vm.update { it.copy(dynamicColor = c) } }) },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    app.baseline.ui.common.ConnectedButtonGroup(
+                        options = modes, selected = modes.firstOrNull { it.first == s.theme }, onSelect = { (k, _) -> vm.update { it.copy(theme = k) } },
+                        label = { it.second }, height = 48.dp,
                     )
+                    app.baseline.ui.common.SwitchRow("Wallpaper colours", "Material You on Android 12+") { Switch(checked = s.dynamicColor, onCheckedChange = { c -> vm.update { it.copy(dynamicColor = c) } }) }
                 }
             }
             item {
@@ -192,7 +172,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                 SectionCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("AI", style = MaterialTheme.typography.titleMedium)
+                            Text("AI", style = MaterialTheme.typography.titleLarge)
                             Text("Optional · Google Gemini, your own key", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Switch(checked = s.aiEnabled, onCheckedChange = { c -> vm.update { it.copy(aiEnabled = c) } })
@@ -237,7 +217,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                 var year by remember(s.birthYear) { mutableStateOf(s.birthYear?.toString() ?: "") }
                 val parsed = year.trim().toIntOrNull()?.takeIf { it in 1900..java.time.LocalDate.now().year - 13 }
                 SectionCard {
-                    Text("About you (optional)", style = MaterialTheme.typography.titleMedium)
+                    Text("About you (optional)", style = MaterialTheme.typography.titleLarge)
                     Text("Used only for age-based step goals and how your VO₂max compares with your age group. It stays on this phone and is never sent anywhere.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -251,17 +231,16 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                     }
                     Spacer(Modifier.height(12.dp))
                     val sexes = listOf("female" to "Female", "male" to "Male", "" to "Not set")
-                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                        sexes.forEachIndexed { i, (k, l) ->
-                            SegmentedButton(selected = s.sex == k, onClick = { vm.update { it.copy(sex = k) } }, shape = SegmentedButtonDefaults.itemShape(i, sexes.size)) { Text(l) }
-                        }
-                    }
+                    app.baseline.ui.common.ConnectedButtonGroup(
+                        options = sexes, selected = sexes.firstOrNull { it.first == s.sex }, onSelect = { (k, _) -> vm.update { it.copy(sex = k) } },
+                        label = { it.second }, height = 48.dp,
+                    )
                 }
             }
             item { SectionCard { app.baseline.update.UpdateSettings() } }
             item {
                 SectionCard {
-                    Text("About", style = MaterialTheme.typography.titleMedium)
+                    Text("About", style = MaterialTheme.typography.titleLarge)
                     Link("How the numbers are calculated", { open(METRICS_URL) })
                     Link("Set up ZeppBridge + Baseline Bridge", { open(SETUP_GUIDE_URL) })
                     Link("Source code on GitHub", { open(REPO_URL) })
@@ -272,7 +251,8 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                     )
                 }
             }
-        }
+        } }
+      }
         StatusBarScrim()
     }
 

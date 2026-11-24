@@ -105,7 +105,7 @@ fun HealthConnectCheckScreen(vm: AppViewModel, onBack: () -> Unit) {
                     }
                 }
                 error != null -> item { SectionCard { Text("Couldn't read Health Connect: $error", color = MaterialTheme.colorScheme.error) } }
-                report == null -> item { Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
+                report == null -> item { Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { app.baseline.ui.common.ExpressiveLoading() } }
                 else -> {
                     val r = report!!
                     r.lastNight?.let { n -> item { LastNightCard(n, inspector) } }

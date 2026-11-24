@@ -220,11 +220,11 @@ class StaggeredListScope(private val d: LazyListScope) : LazyListScope by d {
     private var n = 0
     override fun item(key: Any?, contentType: Any?, content: @Composable LazyItemScope.() -> Unit) {
         val i = n++
-        d.item(key, contentType) { val s = this; Box(Modifier.enter(i)) { s.content() } }
+        d.item(key, contentType) { val s = this; Column(Modifier.enter(i)) { s.content() } }
     }
     override fun items(count: Int, key: ((Int) -> Any)?, contentType: (Int) -> Any?, itemContent: @Composable LazyItemScope.(Int) -> Unit) {
         val first = n; n += count
-        d.items(count, key, contentType) { idx -> val s = this; Box(Modifier.enter(first + idx)) { s.itemContent(idx) } }
+        d.items(count, key, contentType) { idx -> val s = this; Column(Modifier.enter(first + idx)) { s.itemContent(idx) } }
     }
 }
 
@@ -446,5 +446,20 @@ fun EntryRow(icon: ImageVector, title: String, line: String, index: Int, count: 
             Spacer(Modifier.width(8.dp))
             Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = cs.onSurfaceVariant)
         }
+    }
+}
+
+// ------------------------------------------------------------------ settings rows
+
+/** A setting with a switch (or any trailing control): full-width text that wraps, no list-item inset. */
+@Composable
+fun SwitchRow(title: String, body: String? = null, modifier: Modifier = Modifier, trailing: @Composable () -> Unit) {
+    Row(modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            body?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp)) }
+        }
+        Spacer(Modifier.width(16.dp))
+        trailing()
     }
 }

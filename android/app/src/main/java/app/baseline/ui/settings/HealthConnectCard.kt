@@ -80,7 +80,7 @@ fun HealthConnectCard(vm: AppViewModel, s: AppSettings, bridgeHasSamples: Boolea
     val on = s.healthConnect && granted == true
 
     SectionCard {
-        Text("Health Connect", style = MaterialTheme.typography.titleMedium)
+        Text("Health Connect", style = MaterialTheme.typography.titleLarge)
         Text(
             "Copy Zepp's readings into Health Connect exactly as Zepp recorded them, so Google Health and other apps show the same numbers as Zepp.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -102,57 +102,46 @@ fun HealthConnectCard(vm: AppViewModel, s: AppSettings, bridgeHasSamples: Boolea
                 return@SectionCard
             }
         }
-        ListItem(
-            headlineContent = { Text("Write Zepp data to Health Connect") },
-            supportingContent = { Text("Heart rate, HRV, SpO₂, sleep with stages, resting heart rate, breathing rate, steps, distance, active calories, workouts and weight. A night is written once it's complete.") },
-            trailingContent = {
-                Switch(checked = on, onCheckedChange = { want ->
-                    if (want) ask.launch(HealthConnectSync.PERMISSIONS) else vm.update { it.copy(healthConnect = false) }
-                })
-            },
-            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        )
+        Spacer(Modifier.height(4.dp))
+        app.baseline.ui.common.SwitchRow(
+            "Write Zepp data to Health Connect",
+            "Heart rate, HRV, SpO₂, sleep with stages, resting heart rate, breathing rate, steps, distance, active calories, workouts and weight. A night is written once it's complete.",
+        ) {
+            Switch(checked = on, onCheckedChange = { want ->
+                if (want) ask.launch(HealthConnectSync.PERMISSIONS) else vm.update { it.copy(healthConnect = false) }
+            })
+        }
         note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
 
         if (on) {
             Text(statusLine(status), style = MaterialTheme.typography.bodySmall,
                 color = if (status.lastError != null && !status.running) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-            ListItem(
-                headlineContent = { Text("Date HRV the way Google Health reads it") },
-                supportingContent = {
-                    Text(
-                        "Google Health files a night's HRV under the UTC date of its first reading, so a night you fall asleep after midnight shows up on the day before. " +
-                            "This moves each finished night's HRV readings a few hours later, just past midnight UTC, so Google files it under the day you woke up. " +
-                            "The values stay Zepp's; other apps see these readings later than they happened.",
-                    )
-                },
-                trailingContent = {
-                    Switch(checked = s.healthConnectGoogleHrv, onCheckedChange = { c ->
-                        vm.update { it.copy(healthConnectGoogleHrv = c) }
-                        scope.launch { kotlinx.coroutines.delay(300); sync.run() }
-                    }, enabled = !status.running)
-                },
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-            )
-            Spacer(Modifier.height(4.dp))
-            Text("How far back", style = MaterialTheme.typography.bodyMedium)
-            Spacer(Modifier.height(6.dp))
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                HISTORY.forEachIndexed { i, (days, label) ->
-                    SegmentedButton(
-                        selected = s.healthConnectDays == days,
-                        onClick = {
-                            if (s.healthConnectDays != days) {
-                                vm.update { it.copy(healthConnectDays = days) }
-                                if (days > s.healthConnectDays) scope.launch { sync.recopy() }
-                            }
-                        },
-                        shape = SegmentedButtonDefaults.itemShape(i, HISTORY.size),
-                    ) { Text(label) }
-                }
+            app.baseline.ui.common.SwitchRow(
+                "Date HRV the way Google Health reads it",
+                "Google Health files a night's HRV under the UTC date of its first reading, so a night you fall asleep after midnight shows up on the day before. " +
+                    "This moves each finished night's HRV readings a few hours later, just past midnight UTC, so Google files it under the day you woke up. " +
+                    "The values stay Zepp's; other apps see these readings later than they happened.",
+            ) {
+                Switch(checked = s.healthConnectGoogleHrv, onCheckedChange = { c ->
+                    vm.update { it.copy(healthConnectGoogleHrv = c) }
+                    scope.launch { kotlinx.coroutines.delay(300); sync.run() }
+                }, enabled = !status.running)
             }
+            Spacer(Modifier.height(4.dp))
+            Text("How far back", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(6.dp))
+            app.baseline.ui.common.ConnectedButtonGroup(
+                options = HISTORY, selected = HISTORY.firstOrNull { it.first == s.healthConnectDays },
+                onSelect = { (days, _) ->
+                    if (s.healthConnectDays != days) {
+                        vm.update { it.copy(healthConnectDays = days) }
+                        if (days > s.healthConnectDays) scope.launch { sync.recopy() }
+                    }
+                },
+                label = { it.second }, height = 48.dp,
+            )
             Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilledTonalButton(onClick = { scope.launch { sync.run() } }, enabled = !status.running) { Text("Write now") }
                 OutlinedButton(onClick = { confirmRemove = true }, enabled = !status.running) { Text("Remove Baseline's data") }
             }
@@ -163,7 +152,7 @@ fun HealthConnectCard(vm: AppViewModel, s: AppSettings, bridgeHasSamples: Boolea
             Spacer(Modifier.height(14.dp))
             Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
                 Column(Modifier.padding(14.dp)) {
-                    Text("The Zepp app writes here too", style = MaterialTheme.typography.titleSmall)
+                    Text("The Zepp app writes here too", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "Zepp still writes ${zeppWrites.size} kinds of data, including half-finished nights at about 5 am that Google Health keeps. " +

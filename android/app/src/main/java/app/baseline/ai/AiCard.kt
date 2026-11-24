@@ -76,7 +76,7 @@ fun AiCard(
     val clickable = ready && state is AiState.Idle
     Surface(
         shape = MaterialTheme.shapes.large,
-        color = cs.surfaceContainerLow,
+        color = cs.surfaceContainer,
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(
@@ -90,7 +90,7 @@ fun AiCard(
                 Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 when {
                     collapsed -> TextButton(onClick = { collapsed = false }) { Text("Show") }
-                    state is AiState.Loading -> CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    state is AiState.Loading -> app.baseline.ui.common.ExpressiveLoading(size = 24.dp)
                     clickable -> Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = cs.onSurfaceVariant)
                     state is AiState.Done || state is AiState.Error ->
                         IconButton(onClick = { collapsed = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Rounded.Close, "Hide", tint = cs.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
@@ -124,10 +124,10 @@ fun AiCard(
                 }
                 is AiState.Done -> {
                     Spacer(Modifier.height(10.dp))
-                    Text(state.text, style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 24.sp))
+                    Text(state.text, style = MaterialTheme.typography.bodyLarge)
                     state.note?.let {
                         Spacer(Modifier.height(6.dp))
-                        Text(it, style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant)
+                        Text(it, style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
                     }
                 }
             }

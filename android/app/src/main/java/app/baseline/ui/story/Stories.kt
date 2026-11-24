@@ -38,7 +38,7 @@ fun storyOf(m: Metric): Story = when (m) {
         improve = listOf(
             "Protect sleep duration and a regular bedtime. Together they're the biggest lever.",
             "Alcohol within 3 hours of bed drops next-morning HRV for most people.",
-            "Match training to the score: push on green days, go easy on amber ones.",
+            "Match training to the score: push on Push and Ready days, go easy on Easy and Recover days.",
             "Eat enough on hard training days. Under-fuelling shows up as a falling HRV.",
         ),
         measured = "50% HRV, 30% resting HR, 20% sleep, as z-scores against your last 60 days. Unlocks after 14 nights.",
@@ -74,7 +74,7 @@ fun storyOf(m: Metric): Story = when (m) {
             "Consistent sleep, and hydration on hot days.",
             "Less alcohol and late heavy meals. Both raise overnight heart rate.",
         ),
-        measured = "Zepp's daily resting heart rate (lowest stable value, mostly from sleep). Amber at +3 bpm, red at +5 bpm over your 60-day mean.",
+        measured = "Zepp's daily resting heart rate (lowest stable value, mostly from sleep). Flagged at +3 bpm, and as needing rest at +5 bpm, over your 60-day mean.",
         reliability = Reliability.High,
     )
     Metric.Breathing -> Story(
