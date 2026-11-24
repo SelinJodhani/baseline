@@ -226,18 +226,27 @@ fun HealthspanScreen(m: Model, onBack: () -> Unit, onOpenSettings: () -> Unit, o
         if (hs.history.count { it.second != null } >= 2) item {
             val pts = hs.history
             val vals = pts.map { p -> p.second?.let { g -> hs.age?.let { a -> max(Cha.HEALTH_AGE_FLOOR, a + g) } ?: g } }
+            val t = app.baseline.ui.story.trendOf(vals, higherIsBetter = false)
+            val tint = when (t?.good) { true -> h.great; false -> h.fair; null -> MaterialTheme.colorScheme.primary }
             SectionCard {
                 Text("Last 6 months", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                t?.let {
+                    val since = pts.firstOrNull { p -> p.second != null }?.first?.let { d -> Fmt.dayMonth(d) } ?: ""
+                    Text(
+                        if (it.steady) "Steady since $since" else "${"%.1f".format(abs(it.delta))} years ${if (it.delta < 0) "younger" else "older"} since $since",
+                        style = MaterialTheme.typography.titleMedium, color = tint, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
                 Spacer(Modifier.height(4.dp))
                 TrendChart(
-                    values = vals, color = h.great,
+                    values = vals, color = h.great, trendColor = tint,
                     labels = ChartLabels(pts.map { Fmt.dayMonth(it.first) }) { "%.1f".format(it) },
                     goal = hs.age?.toDouble() ?: 0.0, goalLabel = "Your age",
                     tooltip = { i -> "Week to ${Fmt.dayMonth(pts[i].first)}\n" + (vals[i]?.let { v -> if (hs.age != null) "Health age ${"%.1f".format(v)}" else years(v) } ?: "Not enough data") },
                     height = 180.dp,
                 )
                 Spacer(Modifier.height(8.dp))
-                ChartLegend(listOf(LegendKey(KeyKind.Line, h.great, if (hs.age != null) "Health age, each week's 90 days" else "Years vs your age"), LegendKey(KeyKind.Dash, h.great, "Your age")))
+                ChartLegend(listOf(LegendKey(KeyKind.Line, tint, if (hs.age != null) "Health age, each week's 90 days" else "Years vs your age"), LegendKey(KeyKind.Dash, h.great, "Your age")))
             }
         }
         // --- AI plan

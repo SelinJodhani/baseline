@@ -235,8 +235,11 @@ fun TrendChart(
     positions: List<Float>? = null,
     tooltip: ((Int) -> String)? = null,
     height: Dp = 220.dp,
+    /** Colour of the trend line and its fill (e.g. green when heading the right way); defaults to [color]. */
+    trendColor: Color? = null,
     onSelect: (Int?) -> Unit = {},
 ) {
+    val tc = trendColor ?: color
     val measurer = rememberTextMeasurer()
     val p = rememberGrow(values.hashCode())
     var sel by remember(values.size) { mutableStateOf<Int?>(null) }
@@ -351,17 +354,32 @@ fun TrendChart(
                 if (v == null) return@forEachIndexed
                 val yy = y(lo + (v - lo) * p)
                 val hit = goal != null && v >= goal
-                val c = if (sel == null || sel == i) color.copy(alpha = if (hit || goal == null) 1f else .55f) else color.copy(alpha = .25f)
+                // With a trend line on top, bars step back so the direction reads first.
+                val dim = if (average != null) .55f else 1f
+                val c = if (sel == null || sel == i) color.copy(alpha = (if (hit || goal == null) 1f else .55f) * dim) else color.copy(alpha = .25f)
                 drawRoundRect(c, Offset(x(i) - bw / 2, yy), Size(bw, (y(lo) - yy).coerceAtLeast(2f)), CornerRadius(bw / 2.5f))
+            }
+            average?.takeIf { a -> a.count { it != null } >= 2 }?.let { avg ->
+                clipRevealRect(left, p) {
+                    runs(avg).forEach { run ->
+                        if (run.size > 1) drawPath(smoothPath(run.map { Offset(x(it.first), y(it.second)) }), tc, style = Stroke(3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                    }
+                }
             }
         } else {
             val avgLine = average?.takeIf { a -> a.count { it != null } >= 2 }
             if (avgLine != null) {
-                // Long range: faint daily dots, bold average.
-                values.forEachIndexed { i, v -> v?.let { drawCircle(color.copy(alpha = .35f), 2.dp.toPx(), Offset(x(i), y(it))) } }
+                // Long range: days fade into faint dots; one smooth trend line with a soft fill shows the direction.
+                values.forEachIndexed { i, v -> v?.let { drawCircle(color.copy(alpha = .18f), 1.8.dp.toPx(), Offset(x(i), y(it))) } }
                 clipRevealRect(left, p) {
                     runs(avgLine).forEach { run ->
-                        if (run.size > 1) drawPath(smoothPath(run.map { Offset(x(it.first), y(it.second)) }), color, style = Stroke(3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                        val pts = run.map { Offset(x(it.first), y(it.second)) }
+                        if (pts.size > 1) {
+                            val path = smoothPath(pts)
+                            val fill = Path().apply { addPath(path); lineTo(pts.last().x, top + h); lineTo(pts.first().x, top + h); close() }
+                            drawPath(fill, tc.copy(alpha = .14f))
+                            drawPath(path, tc, style = Stroke(3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                        }
                     }
                 }
             } else {
@@ -373,19 +391,29 @@ fun TrendChart(
                             val path = smoothPath(pts)
                             if (n <= 60) {
                                 val fill = Path().apply { addPath(path); lineTo(pts.last().x, top + h); lineTo(pts.first().x, top + h); close() }
-                                drawPath(fill, color.copy(alpha = .10f))
+                                drawPath(fill, tc.copy(alpha = .10f))
                             }
-                            drawPath(path, color, style = Stroke((if (n <= 60) 2.5 else 1.8).dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-                        } else if (n > 45) drawCircle(color, 2.dp.toPx(), pts[0])
+                            drawPath(path, tc, style = Stroke((if (n <= 60) 2.5 else 1.8).dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                        } else if (n > 45) drawCircle(tc, 2.dp.toPx(), pts[0])
                     }
-                    if (n <= 45) values.forEachIndexed { i, v -> v?.let { drawCircle(color, 3.dp.toPx(), Offset(x(i), y(it))) } }
+                    if (n <= 45) values.forEachIndexed { i, v -> v?.let { drawCircle(tc, 3.dp.toPx(), Offset(x(i), y(it))) } }
                 }
             }
             // The latest reading, ringed.
             (avgLine ?: values).let { line -> line.indices.lastOrNull { line[it] != null }?.let { i ->
                 val c = Offset(x(i), y(line[i]!!))
-                drawCircle(color.copy(alpha = .25f), 7.dp.toPx() * p, c)
-                drawCircle(color, 4.dp.toPx() * p, c)
+                drawCircle(tc.copy(alpha = .25f), 7.dp.toPx() * p, c)
+                drawCircle(tc, 4.dp.toPx() * p, c)
+                if (avgLine != null && sel == null && p > .99f) {
+                    // Where the trend is now, labelled at the end of the line.
+                    val tm = measurer.measure(labels.format(line[i]!!), TextStyle(fontSize = 11.sp, color = Color.White, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold))
+                    val padX = 6.dp.toPx(); val padY = 2.dp.toPx()
+                    val bw = tm.size.width + padX * 2; val bh = tm.size.height + padY * 2
+                    val bx = (c.x - bw - 8.dp.toPx()).coerceAtLeast(left)
+                    val by = (c.y - bh - 6.dp.toPx()).let { if (it < top) c.y + 6.dp.toPx() else it }
+                    drawRoundRect(tc, Offset(bx, by), Size(bw, bh), CornerRadius(bh / 2))
+                    drawText(tm, topLeft = Offset(bx + padX, by + padY))
+                }
             } }
         }
         goal?.let { g ->

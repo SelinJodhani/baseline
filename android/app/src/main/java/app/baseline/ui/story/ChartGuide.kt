@@ -82,12 +82,40 @@ data class ChartSetup(
     val note: String? = null,
     /** Bars grouped by week (long ranges): each value is that week's daily average, dated by its first day. */
     val weekly: Boolean = false,
+    /** Where the period is heading (first → last point of the trend line), when it can be told. */
+    val trend: TrendInfo? = null,
 ) {
     val count get() = values.count { it != null }
 }
 
+/** Direction of travel over the visible period. [good] is null for metrics where neither direction is better. */
+data class TrendInfo(val from: Double, val to: Double, val good: Boolean?, val steady: Boolean) {
+    val delta: Double get() = to - from
+    val pct: Double? get() = if (kotlin.math.abs(from) > 1e-9) delta / kotlin.math.abs(from) * 100 else null
+}
+
+/** Centered moving average over [window] days (nulls skipped), with gaps inside the series bridged. */
+fun smooth(xs: List<Double?>, window: Int): List<Double?> {
+    val half = window / 2
+    val need = maxOf(2, window / 3)
+    val out = xs.indices.map { i ->
+        xs.subList(maxOf(0, i - half), minOf(xs.size, i + half + 1)).filterNotNull().takeIf { it.size >= need }?.average()
+    }
+    return interpolate(out)
+}
+
+/** Trend direction from a line: first and last points, "steady" under a 2 % change. */
+fun trendOf(line: List<Double?>, higherIsBetter: Boolean?): TrendInfo? {
+    val pts = line.filterNotNull()
+    if (pts.size < 2) return null
+    val from = pts.first(); val to = pts.last()
+    val pct = if (kotlin.math.abs(from) > 1e-9) kotlin.math.abs(to - from) / kotlin.math.abs(from) * 100 else 0.0
+    val steady = pct < 2
+    return TrendInfo(from, to, if (steady) null else higherIsBetter?.let { (to > from) == it }, steady)
+}
+
 /** Metrics whose daily value is already an average or rolling index, so a second average line would mislead. */
-private val alreadySmoothed = setOf(Metric.Consistency, Metric.HrvTrend, Metric.SleepNeed, Metric.SleepTiming, Metric.Signals, Metric.Vo2)
+private val alreadySmoothed = setOf(Metric.Consistency, Metric.HrvTrend, Metric.SleepNeed)
 
 fun chartSetup(m: Model, metric: Metric, days: Int, sp: Spec, h: HealthColors): ChartSetup {
     val raw = values(m, metric, days)
@@ -104,10 +132,15 @@ fun chartSetup(m: Model, metric: Metric, days: Int, sp: Spec, h: HealthColors): 
     }
     val avg: List<Double?>? = when {
         metric == Metric.Weight -> interpolate(Stats.timeEwma(vals, WEIGHT_TAU_DAYS).mapIndexed { i, t -> t.takeIf { vals[i] != null } })
+        // Weekly bars over months: a 4-week trend line on top shows where they're heading.
+        weekly -> if (vals.size >= 8) smooth(vals, 5) else null
         sp.bars || metric in alreadySmoothed -> null
-        // Over a month or less every day is readable on its own; an average line only adds clutter.
+        // Over a month or less every day is readable on its own; a trend line only adds clutter.
         vals.size <= 31 -> null
-        else -> vals.indices.map { i -> vals.subList(maxOf(0, i - 6), i + 1).filterNotNull().takeIf { it.size >= 3 }?.average() }
+        // Longer: a smooth trend (Bevel-style) so the direction is obvious, wider the longer the range.
+        vals.size <= 120 -> smooth(vals, 15)
+        vals.size <= 200 -> smooth(vals, 21)
+        else -> smooth(vals, 31)
     }?.takeIf { a -> a.count { it != null } >= 2 }
     val adv = m.insights.advanced ?: m.engine.advanced.insights
     val band = when (metric) {
@@ -134,12 +167,13 @@ fun chartSetup(m: Model, metric: Metric, days: Int, sp: Spec, h: HealthColors): 
     return ChartSetup(
         values = vals, dates = dates, trimmed = from > 0,
         average = avg,
-        averageLabel = when { avg == null -> null; metric == Metric.Weight -> "Trend"; else -> "7-day average" },
+        averageLabel = if (avg == null) null else "Trend",
         band = band, bandLabel = band?.let { "Your normal" },
         goal = goal, goalLabel = goalLabel,
         zones = zonesFor(metric, h, m),
         note = note,
         weekly = weekly,
+        trend = if ((if (weekly) vals.size * 7 else vals.size) > 31 || metric == Metric.Weight) trendOf(avg ?: vals, sp.higherIsBetter) else null,
     )
 }
 
@@ -219,7 +253,7 @@ fun meaningOf(metric: Metric): String = when (metric) {
 
 private fun guideText(k: LegendKey): String = when (k.kind) {
     KeyKind.Dot -> "Each dot is one day's reading. Single days are noisy, so don't read much into one dot."
-    KeyKind.Line -> if (k.label.contains("average", true) || k.label == "Trend") "The line smooths out the noise. Its direction is what matters." else "The line joins each day's value. Gaps mean no reading that day."
+    KeyKind.Line -> if (k.label.contains("average", true) || k.label == "Trend") "The trend line smooths out day-to-day noise so you can see where you're heading. It turns green when the change is good for you and amber when it isn't." else "The line joins each day's value. Gaps mean no reading that day."
     KeyKind.Band -> "Shaded: your personal normal range, worked out from your own previous weeks. Inside it is a typical day for you."
     KeyKind.Dash -> "Dashed: a target (${k.label}). Bars that reach it are drawn solid."
     KeyKind.Bar -> "Each bar is one day."
