@@ -94,6 +94,11 @@ import app.baseline.ui.common.blobFor
 import app.baseline.ui.theme.Motion
 import app.baseline.ui.theme.Brand
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.ZonedDateTime
 
 @Composable
@@ -101,6 +106,26 @@ fun TodayScreen(
     m: Model, onRefresh: () -> Unit, onSettings: () -> Unit, onMetric: (Metric) -> Unit, onTab: (Int) -> Unit,
     onSync: () -> Unit = {}, onOpenZepp: () -> Unit = {},
 ) {
+    // Days back from today (0 = today). A past day is the same engine, run as of that evening.
+    var back by rememberSaveable { mutableIntStateOf(0) }
+    val oldest = remember(m) { m.data.summary?.days?.minOfOrNull { it.localDate }?.let { java.time.temporal.ChronoUnit.DAYS.between(it, m.insights.today).toInt() } ?: 0 }
+    val past by produceState<Model?>(null, m, back) {
+        value = if (back == 0) null else withContext(Dispatchers.Default) {
+            val day = m.insights.today.minusDays(back.toLong())
+            val at = day.atTime(23, 59).atZone(m.insights.zone).toInstant()
+            InsightEngine(m.data.summary!!, m.settings, at, m.journal).let { e -> m.copy(engine = e, insights = e.compute()) }
+        }
+    }
+    if (back > 0) {
+        val pm = past
+        if (pm == null || pm.insights.today != m.insights.today.minusDays(back.toLong())) {
+            RefreshablePage(false, onRefresh) {
+                item { Header(m, onSettings, onTakeItEasy = {}, back = back, oldest = oldest, onDay = { back = it }) }
+                item { Box(Modifier.fillMaxWidth().padding(top = 80.dp), contentAlignment = Alignment.Center) { ExpressiveLoading() } }
+            }
+        } else PastDay(pm, back, oldest, onDay = { back = it }, onSettings, onMetric, onTab)
+        return
+    }
     val fresh = freshnessOf(m)
     // The activity-scoped view model (same instance AppRoot uses) for check-ins and modes.
     val vm: AppViewModel = viewModel()
@@ -108,11 +133,15 @@ fun TodayScreen(
     var showModes by rememberSaveable { mutableStateOf(false) }
     val mode = m.insights.mode
     RefreshablePage(m.data.refreshing || m.data.syncing, onRefresh) {
-        item { Header(m, onSettings, onTakeItEasy = { showModes = true }) }
+        item { Header(m, onSettings, onTakeItEasy = { showModes = true }, back = 0, oldest = oldest, onDay = { back = it }) }
         item { app.baseline.update.UpdateBanner() }
         if (mode != null) item { ModeBanner(mode, m, onOff = { vm.setMode(null) }) }
         item { Hero(m, onWhy = { showWhy = true }, onFeel = { vm.setFeel(it) }, onTakeItEasy = { showModes = true }) }
-        if (fresh.showCard) item { FreshnessCard(m, fresh, onSync, onOpenZepp) }
+        if (fresh.showCard) item {
+            FreshnessCard(m, fresh, onSync, onOpenZepp, onDismiss = {
+                m.data.summary?.freshness?.lastReadingAt?.let { t -> vm.update { it.copy(syncCardDismissedFor = t) } }
+            })
+        }
         if (m.settings.aiEnabled && m.settings.geminiKey.isNotBlank() && m.settings.briefOnToday && m.settings.briefHiddenOn != m.insights.today.toString()) item {
             BriefCard(m, onHide = { vm.update { it.copy(briefHiddenOn = m.insights.today.toString()) } })
         }
@@ -129,18 +158,53 @@ fun TodayScreen(
     if (showModes) ModeSheet(mode, onPick = { vm.setMode(it); showModes = false }, onDismiss = { showModes = false })
 }
 
+/** A finished day: its verdict, sleep, movement and overnight signals. No check-in, sync or brief. */
+@Composable
+private fun PastDay(m: Model, back: Int, oldest: Int, onDay: (Int) -> Unit, onSettings: () -> Unit, onMetric: (Metric) -> Unit, onTab: (Int) -> Unit) {
+    var showWhy by rememberSaveable { mutableStateOf(false) }
+    RefreshablePage(false, {}) {
+        item { Header(m, onSettings, onTakeItEasy = {}, back = back, oldest = oldest, onDay = onDay) }
+        item { Hero(m, onWhy = { showWhy = true }, onFeel = {}, onTakeItEasy = {}, past = true) }
+        item {
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                SleepTile(m, Modifier.weight(1f).fillMaxHeight(), past = true) { onTab(1) }
+                MoveTile(m, Modifier.weight(1f).fillMaxHeight(), past = true) { onTab(3) }
+            }
+        }
+        item { Signals(m, onMetric) }
+    }
+    if (showWhy) WhySheet(m, onHistory = { showWhy = false; onMetric(Metric.Readiness) }, onDismiss = { showWhy = false })
+}
+
 /** Local hour in the data's timezone, for the "hold sleep until noon" option. */
 private fun localHour(m: Model) = ZonedDateTime.now(m.insights.zone).hour
 
 @Composable
-private fun Header(m: Model, onSettings: () -> Unit, onTakeItEasy: () -> Unit) {
+private fun Header(m: Model, onSettings: () -> Unit, onTakeItEasy: () -> Unit, back: Int, oldest: Int, onDay: (Int) -> Unit) {
     val hour = ZonedDateTime.now(m.insights.zone).hour
-    val greeting = when (hour) { in 5..11 -> "Good morning"; in 12..16 -> "Good afternoon"; in 17..21 -> "Good evening"; else -> "Rest well" }
+    val greeting = when {
+        back == 1 -> "Yesterday"
+        back > 1 -> m.insights.today.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault())
+        hour in 5..11 -> "Good morning"; hour in 12..16 -> "Good afternoon"; hour in 17..21 -> "Good evening"; else -> "Rest well"
+    }
     val cs = MaterialTheme.colorScheme
     Row(Modifier.fillMaxWidth().padding(start = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(Fmt.fullDate(m.insights.today), style = MaterialTheme.typography.titleSmall, color = cs.onSurfaceVariant)
-            Text(greeting, style = MaterialTheme.typography.headlineMedium)
+            // Step through earlier days; the arrows sit right by the date they change.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { onDay(back + 1) }, enabled = back < oldest, modifier = Modifier.size(36.dp).padding(end = 2.dp)) {
+                    Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, "Previous day", tint = cs.onSurfaceVariant)
+                }
+                Text(Fmt.fullDate(m.insights.today), style = MaterialTheme.typography.titleSmall, color = cs.onSurfaceVariant)
+                if (back > 0) IconButton(onClick = { onDay(back - 1) }, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Next day", tint = cs.onSurfaceVariant)
+                }
+            }
+            Text(greeting, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(start = 4.dp))
+        }
+        if (back > 0) {
+            androidx.compose.material3.FilledTonalButton(onClick = { onDay(0) }) { Text("Today") }
+            return@Row
         }
         FilledTonalIconButton(
             onClick = onTakeItEasy, modifier = Modifier.size(48.dp),
@@ -172,7 +236,7 @@ private fun focusIcon(k: Focus.Kind) = when (k) {
  * soft square, pill) and its tone follow the verdict and morph when it changes. Tap either for "why".
  */
 @Composable
-private fun Hero(m: Model, onWhy: () -> Unit, onFeel: (Feel?) -> Unit, onTakeItEasy: () -> Unit) {
+private fun Hero(m: Model, onWhy: () -> Unit, onFeel: (Feel?) -> Unit, onTakeItEasy: () -> Unit, past: Boolean = false) {
     val r = m.insights.readiness
     val f = m.insights.focus
     val h = Brand.health
@@ -187,7 +251,7 @@ private fun Hero(m: Model, onWhy: () -> Unit, onFeel: (Feel?) -> Unit, onTakeItE
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    if (r.verb != null) "Today you're" else "Readiness",
+                    if (r.verb == null) "Readiness" else if (past) "That day you were" else "Today you're",
                     style = MaterialTheme.typography.titleMedium, color = if (r.level == Level.Unknown) cs.onSurfaceVariant else h.of(r.level),
                 )
                 if (r.verb != null) FitText(r.verb.label, MaterialTheme.typography.displayLarge, min = 40.sp)
@@ -216,8 +280,10 @@ private fun Hero(m: Model, onWhy: () -> Unit, onFeel: (Feel?) -> Unit, onTakeItE
             Text("Why this verdict", style = MaterialTheme.typography.labelLarge)
             Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, modifier = Modifier.size(18.dp))
         }
-        Spacer(Modifier.height(10.dp))
-        CheckIn(m, onFeel, onTakeItEasy)
+        if (!past) {
+            Spacer(Modifier.height(10.dp))
+            CheckIn(m, onFeel, onTakeItEasy)
+        }
     }
 }
 
@@ -289,11 +355,11 @@ private fun TileLabel(text: String, icon: androidx.compose.ui.graphics.vector.Im
 }
 
 @Composable
-private fun SleepTile(m: Model, modifier: Modifier, onClick: () -> Unit) {
+private fun SleepTile(m: Model, modifier: Modifier, past: Boolean = false, onClick: () -> Unit) {
     val s = m.insights.sleep
     val h = Brand.health
     val cs = MaterialTheme.colorScheme
-    val hold = m.settings.holdSleepDetail(localHour(m))
+    val hold = !past && m.settings.holdSleepDetail(localHour(m))
     Tile(modifier, LeftTile, onClick) {
         TileLabel("Sleep", Icons.Rounded.Bedtime)
         Spacer(Modifier.height(14.dp))
@@ -316,12 +382,12 @@ private fun SleepTile(m: Model, modifier: Modifier, onClick: () -> Unit) {
             StackBar(listOf((l.deepMin ?: 0).toFloat() to h.deep, (l.lightMin ?: 0).toFloat() to h.light, (l.remMin ?: 0).toFloat() to h.rem, (l.awakeMin ?: 0).toFloat() to h.awake), height = 10.dp)
             Spacer(Modifier.height(12.dp))
         }
-        Text(s.suggestedBedtime?.let { "Bed by ${InsightEngine.fmtTime(it)}" } ?: "—", style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant)
+        if (!past) Text(s.suggestedBedtime?.let { "Bed by ${InsightEngine.fmtTime(it)}" } ?: "—", style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant)
     }
 }
 
 @Composable
-private fun MoveTile(m: Model, modifier: Modifier, onClick: () -> Unit) {
+private fun MoveTile(m: Model, modifier: Modifier, past: Boolean = false, onClick: () -> Unit) {
     val a = m.insights.activity
     val cs = MaterialTheme.colorScheme
     val numbers = m.settings.showNumbers()
@@ -330,7 +396,7 @@ private fun MoveTile(m: Model, modifier: Modifier, onClick: () -> Unit) {
         TileLabel("Move", Icons.Rounded.DirectionsWalk)
         Spacer(Modifier.height(14.dp))
         if (numbers) FitText(a.stepsToday?.let { "%,d".format(it) } ?: "—", MaterialTheme.typography.headlineLarge, min = 22.sp)
-        else Text(if (paused) "Paused" else stepsWord(a.stepsToday, a.stepGoal, localHour(m)), style = MaterialTheme.typography.headlineSmall)
+        else Text(if (paused) "Paused" else stepsWord(a.stepsToday, a.stepGoal, if (past) 23 else localHour(m)), style = MaterialTheme.typography.headlineSmall)
         Text("steps of ${"%,d".format(a.stepGoal)}", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
         Spacer(Modifier.height(14.dp))
         ThickProgress((a.stepsToday ?: 0) / a.stepGoal.toFloat())
@@ -418,7 +484,8 @@ private data class FreshnessInfo(
     val showCard: Boolean,
 )
 
-private const val STALE_AFTER_MIN = 90L
+/** The watch only reaches the cloud when the Zepp app opens, so a few hours old is normal; past this we nudge. */
+private const val STALE_AFTER_MIN = 240L
 
 private fun freshnessOf(m: Model): FreshnessInfo {
     val s = m.data.summary
@@ -430,7 +497,9 @@ private fun freshnessOf(m: Model): FreshnessInfo {
     val stale = live && (readingAge == null || readingAge > STALE_AFTER_MIN)
     val canSync = live && s?.capabilities?.sync == true && !m.data.syncing &&
         (checkAge == null || checkAge * 60 >= app.baseline.SYNC_AFTER_SEC)
-    return FreshnessInfo(readingAge, checkAge, stale, canSync, showCard = stale || m.data.syncing || m.data.syncNote != null)
+        // Closing the card keeps it away until a newer reading arrives.
+    val dismissed = s?.freshness?.lastReadingAt != null && s.freshness.lastReadingAt == m.settings.syncCardDismissedFor
+    return FreshnessInfo(readingAge, checkAge, stale, canSync, showCard = (stale && !dismissed) || m.data.syncing || m.data.syncNote != null)
 }
 
 private fun ageText(min: Long?): String = when {
@@ -445,7 +514,7 @@ private fun ageText(min: Long?): String = when {
 private val ZEPP_PACKAGES = listOf("com.huami.watch.hmwatchmanager", "com.xiaomi.hm.health")
 
 @Composable
-private fun FreshnessCard(m: Model, f: FreshnessInfo, onSync: () -> Unit, onOpenZepp: () -> Unit) {
+private fun FreshnessCard(m: Model, f: FreshnessInfo, onSync: () -> Unit, onOpenZepp: () -> Unit, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
     val cs = MaterialTheme.colorScheme
     val zeppIntent = remember { ZEPP_PACKAGES.firstNotNullOfOrNull { ctx.packageManager.getLaunchIntentForPackage(it) } }
@@ -463,6 +532,7 @@ private fun FreshnessCard(m: Model, f: FreshnessInfo, onSync: () -> Unit, onOpen
                     },
                     style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f),
                 )
+                if (!m.data.syncing) IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Hide until the next reading", tint = cs.onSurfaceVariant) }
             }
             Spacer(Modifier.height(8.dp))
             Text(

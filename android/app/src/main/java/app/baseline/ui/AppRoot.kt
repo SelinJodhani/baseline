@@ -79,7 +79,11 @@ fun AppRoot(vm: AppViewModel) {
                 val pairing by vm.pairing.collectAsStateWithLifecycle()
                 ConnectScreen(vm, initialUrl = pairing?.first ?: s.serverUrl, initialToken = pairing?.second.orEmpty(), onBack = null)
             }
-            else -> Main(vm)
+            else -> androidx.compose.runtime.CompositionLocalProvider(
+                app.baseline.ai.LocalAiHidden provides app.baseline.ai.AiHidden(s.aiHidden) { title, hide ->
+                    vm.update { it.copy(aiHidden = if (hide) it.aiHidden + title else it.aiHidden - title) }
+                },
+            ) { Main(vm) }
         }
     }
 }

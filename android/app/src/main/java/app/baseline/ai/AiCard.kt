@@ -72,7 +72,10 @@ fun AiCard(
     footer: String = "Written by Gemini from a summary of your numbers. Not medical advice.",
 ) {
     val cs = MaterialTheme.colorScheme
-    var collapsed by rememberSaveable(title) { mutableStateOf(false) }
+    // Closing a card is remembered (in settings), so it doesn't pop back the next time the page opens.
+    val hidden = LocalAiHidden.current
+    val collapsed = title in hidden.titles
+    fun setCollapsed(c: Boolean) = hidden.set(title, c)
     val clickable = ready && state is AiState.Idle
     Surface(
         shape = MaterialTheme.shapes.large,
@@ -89,11 +92,11 @@ fun AiCard(
                 Spacer(Modifier.width(10.dp))
                 Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 when {
-                    collapsed -> TextButton(onClick = { collapsed = false }) { Text("Show") }
+                    collapsed -> TextButton(onClick = { setCollapsed(false) }) { Text("Show") }
                     state is AiState.Loading -> app.baseline.ui.common.ExpressiveLoading(size = 24.dp)
                     clickable -> Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = cs.onSurfaceVariant)
                     state is AiState.Done || state is AiState.Error ->
-                        IconButton(onClick = { collapsed = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Rounded.Close, "Hide", tint = cs.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
+                        IconButton(onClick = { setCollapsed(true) }, modifier = Modifier.size(32.dp)) { Icon(Icons.Rounded.Close, "Hide", tint = cs.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
                 }
             }
             if (collapsed) return@Column
@@ -196,3 +199,8 @@ fun MetricAiCard(m: Model, metric: Metric, sp: Spec, onOpenSettings: () -> Unit)
 
 private fun cachedState(ctx: Context, date: String, metric: Metric, q: MetricQuestion): AiState? =
     MetricExplainer.cached(ctx, date, metric, q)?.let { AiState.Done(it.text) }
+
+/** Which AI cards the user closed, and how to change that (provided by AppRoot from settings). */
+class AiHidden(val titles: Set<String> = emptySet(), val set: (String, Boolean) -> Unit = { _, _ -> })
+
+val LocalAiHidden = androidx.compose.runtime.staticCompositionLocalOf { AiHidden() }

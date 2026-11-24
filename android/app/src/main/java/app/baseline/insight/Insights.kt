@@ -186,7 +186,11 @@ class InsightEngine(
     private val journal: Journal = Journal(),
 ) {
     val zone: ZoneId = runCatching { ZoneId.of(s.timezone ?: "") }.getOrElse { ZoneId.systemDefault() }
-    val today: LocalDate = now.atZone(zone).toLocalDate()
+    /**
+     * The day you're living, not the calendar date: it turns over at [DAY_STARTS_AT] (4 am), or earlier if you've
+     * already woken from a real sleep after midnight. So at 1 am you still see the day you had, not an empty one.
+     */
+    val today: LocalDate = logicalDay(now, zone, s)
     /** Sick and travel days: still shown, but left out of every personal baseline. */
     val excludedDates: Set<LocalDate> = journal.excludedDates(today)
     private val byDate: Map<LocalDate, Day> = s.days.associateBy { it.localDate }
@@ -673,6 +677,19 @@ class InsightEngine(
     }
 
     companion object {
+        /** Hour (local) at which a new day begins when you haven't slept yet. */
+        const val DAY_STARTS_AT = 4
+
+        fun logicalDay(now: Instant, zone: ZoneId, s: Summary): LocalDate {
+            val local = now.atZone(zone)
+            val calendar = local.toLocalDate()
+            if (local.hour >= DAY_STARTS_AT) return calendar
+            val midnight = calendar.atStartOfDay(zone).toEpochSecond()
+            // Woke up from a proper sleep since midnight (an early start): that's today already.
+            val wokeToday = s.sleeps.any { it.end in midnight..now.epochSecond && (it.end - it.start) >= 3 * 3600 }
+            return if (wokeToday) calendar else calendar.minusDays(1)
+        }
+
         fun fmtDuration(min: Int): String = if (min < 60) "${min}m" else "${min / 60}h ${"%02d".format(min % 60)}m"
         fun fmtTime(t: LocalTime): String = "%d:%02d %s".format(if (t.hour % 12 == 0) 12 else t.hour % 12, t.minute, if (t.hour < 12) "AM" else "PM")
     }

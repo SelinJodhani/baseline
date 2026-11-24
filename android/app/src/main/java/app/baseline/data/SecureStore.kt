@@ -41,6 +41,10 @@ data class AppSettings(
     val briefOnToday: Boolean = true,
     /** The day ("yyyy-MM-dd") the brief was dismissed; it stays hidden for the rest of that day. */
     val briefHiddenOn: String = "",
+    /** AI explanation cards the user closed (by card title); they stay collapsed until "Show". */
+    val aiHidden: Set<String> = emptySet(),
+    /** The last-reading time (epoch s) the sync card was dismissed for; it stays away until a newer reading. */
+    val syncCardDismissedFor: Long = 0,
     val lastUpdateCheck: Long = 0,
     val skippedVersion: String = "",
     /** Calm mode: Today shows words instead of numbers (story pages keep their numbers). */

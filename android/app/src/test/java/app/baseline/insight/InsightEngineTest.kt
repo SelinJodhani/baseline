@@ -219,6 +219,19 @@ class InsightEngineTest {
         assertEquals(380.0 + 120.0, loads.sum(), 0.01) // one value per session, not one per day of its week
     }
 
+    @Test fun dayTurnsOverAtFourNotMidnight() {
+        val s = summary(20)
+        val oneAm = ZonedDateTime.of(today.plusDays(1), LocalTime.of(1, 0), zone).toInstant()
+        assertEquals(today, engine(s, at = oneAm).today) // still the day you had
+        val fiveAm = ZonedDateTime.of(today.plusDays(1), LocalTime.of(5, 0), zone).toInstant()
+        assertEquals(today.plusDays(1), engine(s, at = fiveAm).today)
+        // Woke from a proper sleep at 3:30 am: that's already the new day.
+        val end = ZonedDateTime.of(today.plusDays(1), LocalTime.of(3, 30), zone).toEpochSecond()
+        val early = s.copy(sleeps = s.sleeps + Sleep(start = end - 6 * 3600, end = end, durationMin = 360))
+        val fourToFour = ZonedDateTime.of(today.plusDays(1), LocalTime.of(3, 45), zone).toInstant()
+        assertEquals(today.plusDays(1), engine(early, at = fourToFour).today)
+    }
+
     @Test fun clockSdHandlesMidnight() {
         val sd = Stats.clockSdMinutes(listOf(23 * 60 + 30.0, 30.0, 23 * 60 + 30.0, 30.0))!!
         assertTrue("sd $sd", sd in 25.0..40.0)
