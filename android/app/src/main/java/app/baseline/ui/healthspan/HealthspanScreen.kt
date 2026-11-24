@@ -119,25 +119,13 @@ private fun leverValue(p: Cha.Part): String = when (p.lever) {
 
 /** The Healthspan row at the top of the Body tab. */
 @Composable
-fun HealthspanEntry(m: Model, onClick: () -> Unit) {
+fun HealthspanEntry(m: Model, onClick: () -> Unit, index: Int = 0, count: Int = 1) {
     val hs = remember(m) { Healthspan(m) }
     val cs = MaterialTheme.colorScheme
     val line = hs.cha?.let { r ->
         hs.age?.let { a -> "Health age ${"%.0f".format(r.healthAge(a))} · you're $a" } ?: "Habits: ${years(r.gapYears)} vs your age"
     } ?: "Needs about 5 weeks of sleep, steps and heart rate"
-    Surface(shape = RoundedCornerShape(28.dp), color = cs.surfaceContainerLow, modifier = Modifier.clip(RoundedCornerShape(28.dp)).clickable(onClick = onClick)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(32.dp).clip(CircleShape).background(Brand.health.great.copy(alpha = .16f)), contentAlignment = Alignment.Center) {
-                Icon(Icons.Rounded.Spa, null, tint = Brand.health.great, modifier = Modifier.size(18.dp))
-            }
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Healthspan", style = MaterialTheme.typography.titleMedium)
-                Text(line, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, maxLines = 1)
-            }
-            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = cs.onSurfaceVariant)
-        }
-    }
+    app.baseline.ui.common.EntryRow(Icons.Rounded.Spa, "Healthspan", line, index, count, onClick)
 }
 
 /**

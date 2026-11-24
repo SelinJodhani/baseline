@@ -32,6 +32,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -424,4 +425,26 @@ fun ThickProgress(fraction: Float, modifier: Modifier = Modifier, height: Dp = 1
             if (f > 0f) drawRoundRect(color, size = androidx.compose.ui.geometry.Size(maxOf(fillW, size.height), size.height), cornerRadius = r)
         },
     )
+}
+
+// ------------------------------------------------------------------ navigation rows
+
+/** A row that opens a page: tonal icon tile, title, a wrapping line, chevron. Use inside a segmented group. */
+@Composable
+fun EntryRow(icon: ImageVector, title: String, line: String, index: Int, count: Int, onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    SegmentRow(index, count, onClick = onClick, padding = 18.dp) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).drawBehind { drawRect(cs.secondaryContainer) }, contentAlignment = Alignment.Center) {
+                Icon(icon, null, tint = cs.onSecondaryContainer, modifier = Modifier.size(24.dp))
+            }
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(line, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+            }
+            Spacer(Modifier.width(8.dp))
+            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = cs.onSurfaceVariant)
+        }
+    }
 }

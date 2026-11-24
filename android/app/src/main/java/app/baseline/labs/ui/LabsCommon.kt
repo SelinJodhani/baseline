@@ -62,17 +62,16 @@ fun OverlayPage(title: String, subtitle: String?, onBack: () -> Unit, content: L
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
       Box(Modifier.fillMaxSize()) { // Surface would stretch the status-bar scrim over the whole page
-        LazyColumn(
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top + 4.dp, bottom = bottom + 32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            item {
-                FilledTonalIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
-                Spacer(Modifier.height(16.dp))
-                Text(title, style = MaterialTheme.typography.headlineLarge)
-                if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        app.baseline.ui.common.ProvideEntrance {
+            LazyColumn(
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top + 4.dp, bottom = bottom + 32.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                app.baseline.ui.common.StaggeredListScope(this).run {
+                    item { app.baseline.ui.common.PageHeader(title, onBack, subtitle) }
+                    content()
+                }
             }
-            content()
         }
         StatusBarScrim()
       }
@@ -93,15 +92,15 @@ fun RangeChip(flag: LabFlag, modifier: Modifier = Modifier) {
 
 @Composable
 fun SectionLabel(text: String) {
-    Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
+    Text(text, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 2.dp))
 }
 
 @Composable
 fun Disclaimer(text: String) {
     Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.Top) {
-        Icon(Icons.Rounded.Info, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp).padding(top = 2.dp))
-        Spacer(Modifier.width(10.dp))
-        Text(text, style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(Icons.Rounded.Info, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp).padding(top = 2.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

@@ -22,6 +22,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import app.baseline.ui.common.EntryRow
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,7 +41,7 @@ import app.baseline.labs.fmtNum
 
 /** "Lab reports" and "Body composition" entries for the top of the Body tab. */
 @Composable
-fun LabsEntries(onLabs: () -> Unit, onBodyComp: () -> Unit, vm: LabsViewModel = viewModel()) {
+fun LabsEntries(onLabs: () -> Unit, onBodyComp: () -> Unit, first: Int = 0, count: Int = 2, vm: LabsViewModel = viewModel()) {
     val data by vm.data.collectAsStateWithLifecycle()
     val latest = data.reportsByDate.lastOrNull()
     val scan = data.scansByDate.lastOrNull()
@@ -49,27 +52,7 @@ fun LabsEntries(onLabs: () -> Unit, onBodyComp: () -> Unit, vm: LabsViewModel = 
     val compLine = scan?.let { s ->
         listOfNotNull("${data.scans.size} ${if (data.scans.size == 1) "scan" else "scans"}", s.percentBodyFat?.let { "${fmtNum(it)}% body fat" }, s.skeletalMuscleKg?.let { "${fmtNum(it)} kg muscle" }).joinToString(" · ")
     } ?: "Add an InBody result sheet"
-    Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
-        Column {
-            Entry(Icons.Rounded.Science, "Lab reports", labsLine, onLabs)
-            HorizontalDivider(Modifier.padding(start = 68.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .4f))
-            Entry(Icons.Rounded.MonitorWeight, "Body composition", compLine, onBodyComp)
-        }
-    }
-}
-
-@Composable
-private fun Entry(icon: ImageVector, title: String, line: String, onClick: () -> Unit) {
-    val cs = MaterialTheme.colorScheme
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(32.dp).clip(CircleShape).background(cs.primary.copy(alpha = .14f)), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = cs.primary, modifier = Modifier.size(18.dp))
-        }
-        Spacer(Modifier.width(16.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-            Text(line, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = cs.onSurfaceVariant)
-    }
+    EntryRow(Icons.Rounded.Science, "Lab reports", labsLine, first, count, onLabs)
+    Spacer(Modifier.height(3.dp))
+    EntryRow(Icons.Rounded.MonitorWeight, "Body composition", compLine, first + 1, count, onBodyComp)
 }

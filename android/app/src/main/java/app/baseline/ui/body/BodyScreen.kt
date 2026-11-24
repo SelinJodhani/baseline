@@ -32,6 +32,7 @@ import app.baseline.ui.charts.Sparkline
 import app.baseline.ui.common.RefreshablePage
 import app.baseline.ui.common.ScreenTitle
 import app.baseline.ui.story.Metric
+import androidx.compose.foundation.layout.Arrangement
 import app.baseline.ui.story.hasData
 import app.baseline.ui.story.now
 import app.baseline.ui.story.spec
@@ -53,8 +54,12 @@ fun BodyScreen(m: Model, onRefresh: () -> Unit, onMetric: (Metric) -> Unit, onLa
     val available = remember(m) { Metric.entries.filter { hasData(m, it) }.toSet() }
     RefreshablePage(m.data.refreshing || m.data.syncing, onRefresh) {
         item { ScreenTitle("Body", "Every signal, with the story behind it") }
-        item { app.baseline.ui.healthspan.HealthspanEntry(m, onHealthspan) }
-        item { app.baseline.labs.ui.LabsEntries(onLabs, onBodyComp) }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                app.baseline.ui.healthspan.HealthspanEntry(m, onHealthspan, index = 0, count = 3)
+                app.baseline.labs.ui.LabsEntries(onLabs, onBodyComp, first = 1, count = 3)
+            }
+        }
         groups.forEach { (title, metrics) ->
             val shown = metrics.filter { it in available }
             if (shown.isEmpty()) return@forEach
@@ -86,7 +91,7 @@ private fun MetricRow(m: Model, metric: Metric) {
             Text(metric.label, style = MaterialTheme.typography.titleMedium)
             Text(n.status, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
         }
-        if (trend.count { it != null } >= 2) {
+        if (metric != Metric.Signals && trend.count { it != null } >= 2) {
             Spacer(Modifier.width(10.dp))
             if (sp.bars) MiniBars(trend.takeLast(14), sp.color, Modifier.width(52.dp).height(30.dp))
             else Sparkline(trend, sp.color, Modifier.width(52.dp).height(30.dp))
