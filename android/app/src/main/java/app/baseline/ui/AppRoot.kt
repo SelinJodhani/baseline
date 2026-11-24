@@ -87,26 +87,28 @@ private fun Main(vm: AppViewModel) {
     var story by rememberSaveable { mutableStateOf<Metric?>(null) }
     var showLabs by rememberSaveable { mutableStateOf(false) }
     var showBodyComp by rememberSaveable { mutableStateOf(false) }
+    var showHealthspan by rememberSaveable { mutableStateOf(false) }
     val pairing by vm.pairing.collectAsStateWithLifecycle()
     LaunchedEffect(pairing) { if (pairing != null) { showConnect = true } }
     val requested by vm.requestedTab.collectAsStateWithLifecycle()
     LaunchedEffect(requested) {
-        requested?.let { tab = it.coerceIn(0, 3); story = null; showLabs = false; showBodyComp = false; showSettings = false; showConnect = false; vm.consumeTab() }
+        requested?.let { tab = it.coerceIn(0, 3); story = null; showLabs = false; showBodyComp = false; showHealthspan = false; showSettings = false; showConnect = false; vm.consumeTab() }
     }
 
-    BackHandler(enabled = showSettings || showConnect || showLabs || showBodyComp || story != null || tab != 0) {
+    BackHandler(enabled = showSettings || showConnect || showLabs || showBodyComp || showHealthspan || story != null || tab != 0) {
         when {
             showConnect -> showConnect = false
             showSettings -> showSettings = false
             showLabs -> showLabs = false
             showBodyComp -> showBodyComp = false
+            showHealthspan -> showHealthspan = false
             story != null -> story = null
             else -> tab = 0
         }
     }
 
     AnimatedContent(
-        targetState = when { showConnect -> 5; showSettings -> 4; showLabs -> 3; showBodyComp -> 2; story != null -> 1; else -> 0 },
+        targetState = when { showConnect -> 6; showSettings -> 5; showLabs -> 4; showBodyComp -> 3; showHealthspan -> 2; story != null -> 1; else -> 0 },
         transitionSpec = {
             if (targetState > initialState) (slideInHorizontally { it / 3 } + fadeIn()) togetherWith fadeOut()
             else fadeIn() togetherWith (slideOutHorizontally { it / 3 } + fadeOut())
@@ -114,13 +116,19 @@ private fun Main(vm: AppViewModel) {
         label = "overlay",
     ) { layer ->
         when (layer) {
-            5 -> ConnectScreen(
+            6 -> ConnectScreen(
                 vm, initialUrl = pairing?.first ?: vm.settings.value?.serverUrl.orEmpty(), initialToken = pairing?.second.orEmpty(),
                 onBack = { showConnect = false; vm.pairing.value = null }, onDone = { showConnect = false; showSettings = false; vm.pairing.value = null },
             )
-            4 -> SettingsScreen(vm, onBack = { showSettings = false }, onConnect = { showConnect = true })
-            3 -> LabsScreen(onBack = { showLabs = false }, onOpenSettings = { showSettings = true })
-            2 -> BodyCompScreen(onBack = { showBodyComp = false }, onOpenSettings = { showSettings = true })
+            5 -> SettingsScreen(vm, onBack = { showSettings = false }, onConnect = { showConnect = true })
+            4 -> LabsScreen(onBack = { showLabs = false }, onOpenSettings = { showSettings = true })
+            3 -> BodyCompScreen(onBack = { showBodyComp = false }, onOpenSettings = { showSettings = true })
+            2 -> model?.let { m ->
+                app.baseline.ui.healthspan.HealthspanScreen(
+                    m, onBack = { showHealthspan = false }, onOpenSettings = { showSettings = true }, onLabs = { showLabs = true },
+                    onMetric = { story = it; showHealthspan = false },
+                )
+            } ?: Box(Modifier.fillMaxSize())
             1 -> model?.let { m -> story?.let { StoryScreen(m, it, onBack = { story = null }, onOpenSettings = { showSettings = true }) } } ?: Box(Modifier.fillMaxSize())
             else -> Scaffold(
                 containerColor = MaterialTheme.colorScheme.surface,
@@ -155,7 +163,7 @@ private fun Main(vm: AppViewModel) {
                                     onSync = { vm.syncNow() }, onOpenZepp = { vm.syncOnReturn = true },
                                 )
                                 1 -> SleepScreen(m, onRefresh = { vm.pullToRefresh() }, onMetric = openMetric)
-                                2 -> BodyScreen(m, onRefresh = { vm.pullToRefresh() }, onMetric = openMetric, onLabs = { showLabs = true }, onBodyComp = { showBodyComp = true })
+                                2 -> BodyScreen(m, onRefresh = { vm.pullToRefresh() }, onMetric = openMetric, onLabs = { showLabs = true }, onBodyComp = { showBodyComp = true }, onHealthspan = { showHealthspan = true })
                                 else -> ActivityScreen(m, onRefresh = { vm.pullToRefresh() }, onMetric = openMetric)
                             }
                         }

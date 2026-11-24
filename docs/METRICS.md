@@ -106,6 +106,32 @@ One sentence, picked by the first rule that matches:
 7. Afternoon, and steps below 60% of goal → how many minutes of walking closes the gap.
 8. Otherwise → steady, train as planned.
 
+## Healthspan
+
+**Coachable Health Age** (Google Research, arXiv 2611.08568). A fixed formula: `gap = Σ wᵢ · ln HRᵢ / 0.1` years;
+health age = max(18, age + gap).
+
+| Domain (90-day mean) | ln HR | Weight |
+|---|---|---|
+| Sleep (main sleep, hours) | 0 for 6–9 h; (6 − h)·ln 1.20 below, (h − 9)·ln 1.34 above | 0.8790 |
+| Resting HR (daily lowest 5-min HR) | 0 at ≤ 60; ln 1.08 per 10 bpm to 70, then to ln 1.33 at 90 | 0.7066 |
+| Active zone minutes (per week) | 0 below 115; ln 0.76 at 245, ln 0.71 at 418, ln 0.68 from 500 | 0.6950 |
+| Steps (per day) | (min(steps, 9000) − 8000)/1000 · ln 0.88 | 0.4773 |
+| Sleep-midpoint SD (optional) | 0 at ≤ 30 min; ln 1.16 at 60, ln 1.52 at 90, ln 2.11 at 120 (cap) | 1 |
+| VO₂max (optional) | (measured − expected)/3.5 · ln 0.88; expected = 79.9 − 0.39·age − 13.7·female − 0.127·lb | 1 |
+
+A window needs ≥ 5 valid ISO weeks in the last 91 days (≥ 2 days each with steps, main sleep and heart rate). The
+bridge computes active zone minutes Fitbit's way from minute heart rate: heart-rate-reserve zones from the day's
+lowest rate and the profile max HR, 1 point a minute at 40–59 % HRR, 2 at ≥ 60 %. Weeks with a core domain missing
+are left out of the trend. What-ifs re-run the formula with one habit changed; the paper's Sensor World Model
+(forecasting) is unreleased, so Baseline doesn't claim to predict your body's response.
+
+**Phenotypic Age** (Levine et al. 2018): xb = −19.907 − 0.0336·albumin(g/L) + 0.0095·creatinine(µmol/L)
++ 0.1953·glucose(mmol/L) + 0.0954·ln CRP(mg/dL) − 0.0120·lymphocyte% + 0.0268·MCV + 0.3306·RDW + 0.00188·ALP
++ 0.0554·WBC + 0.0804·age; M = 1 − exp(−exp(xb)·(exp(120γ) − 1)/γ), γ = 0.0076927;
+PhenoAge = 141.50225 + ln(−0.00553·ln(1 − M))/0.090165. Uses the newest set of reports within 30 days that has all
+nine markers.
+
 ## Data rules
 
 - A missing reading is a gap, never zero and never interpolated. This follows ZeppBridge's own export contract.

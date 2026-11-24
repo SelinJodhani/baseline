@@ -81,6 +81,10 @@ data class Day(
     val charge: Double? = null,
     val trainingLoad: Double? = null,
     val vo2max: Double? = null,
+    /** Bridge 0.4+: the day's lowest 5-minute heart rate (the Coachable Health Age's resting-HR input). */
+    val minHr: Double? = null,
+    /** Bridge 0.4+: Fitbit-style Active Zone Minutes from minute heart rate (fat burn ×1, cardio and peak ×2). */
+    val azm: Double? = null,
 ) {
     val localDate: LocalDate get() = LocalDate.parse(date)
 }

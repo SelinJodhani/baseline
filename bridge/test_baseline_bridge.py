@@ -105,7 +105,7 @@ class NadirTest(unittest.TestCase):
         night, nap_out = s["sleeps"]
         self.assertEqual(night["hrNadir"]["bpm"], 48)
         self.assertNotIn("hrNadir", nap_out)
-        self.assertEqual(s["bridgeVersion"], "0.3.0")
+        self.assertEqual(s["bridgeVersion"], "0.4.0")
         # Nights that start before the per-minute export window get nothing (a partial night would mislead).
         s2 = b.build_summary(long_doc, SHORT, start="2026-01-01", end="2026-01-02", data_modified=None,
                              hr_doc=hr_doc, hr_from="2026-01-03")
@@ -131,6 +131,28 @@ class NadirTest(unittest.TestCase):
             self.assertEqual(doc["sleeps"][0]["durationMin"], 450)
             b.SummaryCache(exporter, d, hr_exporter=hr).get(30)
         self.assertEqual(calls[0][2], "heart_rate")
+        # ~90 days are exported in ≤31-day chunks that cover the window without gaps.
+        self.assertGreaterEqual(len(calls), 3)
+        for (_, e1, _), (s2, _, _) in zip(calls, calls[1:]):
+            import datetime as _dt
+            self.assertEqual(_dt.date.fromisoformat(s2) - _dt.date.fromisoformat(e1), _dt.timedelta(days=1))
+
+    def test_day_summaries_min_hr_and_azm(self):
+        import datetime as _dt
+        utc = _dt.timezone.utc
+        # A full day at 60 bpm with a 30-minute run at 150 (cardio) and 30 minutes at 120 (fat burn).
+        def hr_at(i):
+            return 150.0 if 600 <= i < 630 else 120.0 if 630 <= i < 660 else 60.0
+        rows = _minutes("2026-01-05T00:00:00+00:00", 1440, hr_at)
+        readings = b.hr_readings(rows)
+        out = b.day_hr_summaries(readings, max_hr=190.0, tz=utc)
+        day = out["2026-01-05"]
+        self.assertEqual(day["minHr"], 60)
+        # reserve 130: fat burn from 112, cardio from 138 → 30 min × 2 + 30 min × 1
+        self.assertEqual(day["azm"], 90)
+        # No max HR: min HR only. Too few readings: nothing.
+        self.assertNotIn("azm", b.day_hr_summaries(readings, max_hr=None, tz=utc)["2026-01-05"])
+        self.assertEqual(b.day_hr_summaries(readings[:600], max_hr=190.0, tz=utc), {})
 
 
 class SyncTest(unittest.TestCase):

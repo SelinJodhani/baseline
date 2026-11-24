@@ -221,6 +221,18 @@ object Biomarkers {
             emptyList(),
             "The average size of your red blood cells.",
         ),
+        BiomarkerDef(
+            "rdw", "RDW", LabCategory.Blood, "%",
+            listOf("rdw", "rdw cv", "rdw-cv", "rdw (cv)", "red cell distribution width", "red cell distribution width cv", "red blood cell distribution width"),
+            emptyList(),
+            "How much your red blood cells vary in size. Higher values track inflammation, low iron or B12, and ageing.",
+        ),
+        BiomarkerDef(
+            "lymphocytes_pct", "Lymphocytes", LabCategory.Blood, "%",
+            listOf("lymphocytes", "lymphocyte", "lymphocytes %", "lymphocyte %", "lymphocyte percentage", "lymph %", "lymphs", "lymphocytes percent"),
+            emptyList(),
+            "The share of your white cells that are lymphocytes, the cells behind long-term immunity.",
+        ),
         // Thyroid
         BiomarkerDef(
             "tsh", "TSH", LabCategory.Thyroid, "mIU/L",

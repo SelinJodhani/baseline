@@ -136,6 +136,7 @@ object DemoData {
                 lowZoneMin = (moderate * 1.8).roundToInt().toDouble(), moderateZoneMin = moderate.roundToInt().toDouble(), vigorousZoneMin = vigorous.roundToInt().toDouble(),
                 zeppReadiness = zr.roundToInt().toDouble(), zeppSkinTempScore = skinTemp, charge = (zr - 6 + r.gauss(0.0, 5.0)).coerceIn(5.0, 100.0).roundToInt().toDouble(),
                 trainingLoad = load.roundToInt().toDouble(), vo2max = vo2.round1(),
+                minHr = (rhr - 4).roundToInt().toDouble(), azm = (moderate + 2 * vigorous).roundToInt().toDouble(),
             )
         }
 

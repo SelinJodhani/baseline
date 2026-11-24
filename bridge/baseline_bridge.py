@@ -3,9 +3,10 @@
 
 It shells out to `zeppbridge-cli export --format json` (the stable, documented
 `zeppbridge.ai.v2` contract) and reshapes the result into one compact JSON
-document the Baseline Android app understands (`baseline.v1`). For the last 30 nights it
-also reads per-minute heart rate (`--detail full`, heart_rate only) and sends just each
-night's lowest heart rate and its time (`hrNadir`). It never writes to the
+document the Baseline Android app understands (`baseline.v1`). It also reads per-minute heart
+rate (`--detail full`, heart_rate only) for the last ~9 months and sends only small summaries of it:
+each night's lowest heart rate and its time (`hrNadir`, last 30 nights), and per day the lowest
+heart rate (`minHr`) and Fitbit-style Active Zone Minutes (`azm`). It never writes to the
 ZeppBridge database, never talks to the Zepp cloud, and has no dependencies
 beyond the Python standard library.
 
@@ -40,7 +41,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 SCHEMA = "baseline.v1"
 
 LONG_TYPES = "daily_activity,recovery,pai,sleep,workouts,vo2max,weight,training_load"
@@ -57,6 +58,16 @@ NADIR_SMOOTH = 5            # rolling mean over 5 consecutive readings (~5 min) 
 NADIR_MAX_SPAN_S = 600      # ...and those 5 readings must fall within 10 minutes
 NADIR_MIN_READINGS = 30     # a night needs this many readings inside the sleep window
 HR_PLAUSIBLE = (25.0, 230.0)
+
+# Per-day summaries of minute heart rate over the last HR_DETAIL_DAYS (for the Coachable Health Age):
+#   minHr — the day's lowest 5-reading rolling mean (the paper's "daily minimum heart rate" stand-in for RHR);
+#   azm   — Active Zone Minutes as Fitbit defines them: heart-rate-reserve zones from that day's resting rate and
+#           the profile max HR; 1 point a minute in the fat-burn zone (40–59 % HRR), 2 in cardio/peak (≥ 60 %).
+# Exported in chunks so the bridge never holds a 90-day JSON document at once.
+HR_DETAIL_DAYS = 273     # 91-day health-age window + 26 weekly points of history
+HR_CHUNK_DAYS = 31
+DAY_MIN_READINGS = 720      # a day needs ≥ 12 h of readings for minHr/azm (gaps are never imputed)
+AZM_FATBURN, AZM_CARDIO = 0.40, 0.60
 
 # ZeppBridge daily metric name -> Baseline day field.
 DAILY_FIELDS = {
@@ -235,6 +246,28 @@ def sleep_nadir(readings: list[tuple[int, float]], times: list[int], start: int,
     return {"bpm": _round(best[0], 0), "at": best[1]}
 
 
+def day_hr_summaries(readings: list[tuple[int, float]], max_hr: float | None, tz: dt.tzinfo | None = None) -> dict[str, dict]:
+    """{local date: {"minHr": bpm, "azm": points}} for days with enough readings. `readings` sorted (epoch, bpm)."""
+    tz = tz or _local_tz()
+    by_day: dict[str, list[tuple[int, float]]] = {}
+    for t, v in readings:
+        by_day.setdefault(dt.datetime.fromtimestamp(t, tz).date().isoformat(), []).append((t, v))
+    out: dict[str, dict] = {}
+    for day, rs in by_day.items():
+        if len(rs) < DAY_MIN_READINGS:
+            continue
+        low = sleep_nadir(rs, [t for t, _ in rs], rs[0][0], rs[-1][0])
+        if low is None:
+            continue
+        item: dict[str, Any] = {"minHr": low["bpm"]}
+        if max_hr and max_hr > low["bpm"] + 40:
+            reserve = max_hr - low["bpm"]
+            fat, cardio = low["bpm"] + AZM_FATBURN * reserve, low["bpm"] + AZM_CARDIO * reserve
+            item["azm"] = sum(2 if v >= cardio else 1 for _, v in rs if v >= fat)
+        out[day] = item
+    return out
+
+
 def build_sleeps(sessions: list[dict], hr: list[tuple[int, float]] | None = None,
                  hr_since: int | None = None) -> list[dict]:
     """Sleep sessions; stage timelines for the last SLEEP_STAGE_NIGHTS, and an hrNadir for main sleeps that start
@@ -329,11 +362,23 @@ def build_summary(long_doc: dict, short_doc: dict, *, start: str, end: str,
     ld, sd = long_doc.get("data", {}), short_doc.get("data", {})
     days = build_days(ld.get("daily_metrics", []))
     hourly = build_hourly(sd.get("metric_samples", []))
-    hr = hr_readings((hr_doc or {}).get("data", {}).get("metric_samples", [])) if hr_doc else None
+    if isinstance(hr_doc, list):  # pre-parsed readings (chunked export)
+        hr = hr_doc or None
+    else:
+        hr = hr_readings((hr_doc or {}).get("data", {}).get("metric_samples", [])) if hr_doc else None
     hr_since = None
     if hr_from:
         hr_since = int(dt.datetime.combine(dt.date.fromisoformat(hr_from), dt.time(), _local_tz()).timestamp())
     sleeps = build_sleeps(ld.get("sleep_sessions", []), hr, hr_since)
+    if hr:
+        profile_max = next((d["maxHr"] for d in reversed(days) if "maxHr" in d), None)
+        by_date = {d["date"]: d for d in days}
+        for date, extra in day_hr_summaries(hr, profile_max).items():
+            if date not in by_date:
+                by_date[date] = {"date": date}
+                days.append(by_date[date])
+            by_date[date].update(extra)
+        days.sort(key=lambda d: d["date"])
     last_points = [r[0] for s in hourly.values() for r in s]
     last_points += [s["end"] for s in sleeps]
     max_hr = next((d["maxHr"] for d in reversed(days) if "maxHr" in d), None)
@@ -370,6 +415,18 @@ class SummaryCache:
         self.lock = threading.Lock()
         self.entries: dict[int, tuple[str, bytes, bytes]] = {}
 
+    def minute_hr(self, today: dt.date) -> list[tuple[int, float]]:
+        """Per-minute heart rate for the last HR_DETAIL_DAYS, exported in HR_CHUNK_DAYS pieces."""
+        readings: dict[int, float] = {}
+        start = today - dt.timedelta(days=HR_DETAIL_DAYS)
+        while start <= today:
+            stop = min(today, start + dt.timedelta(days=HR_CHUNK_DAYS - 1))
+            doc = self.hr_exporter(start.isoformat(), stop.isoformat(), "heart_rate")
+            readings.update(hr_readings(doc.get("data", {}).get("metric_samples", [])))
+            del doc
+            start = stop + dt.timedelta(days=1)
+        return sorted(readings.items())
+
     def library_mtime(self) -> float | None:
         times = []
         for name in ("zepp.db", "zepp.db-wal"):
@@ -394,12 +451,13 @@ class SummaryCache:
             t0 = time.monotonic()
             long_doc = export_range(self.exporter, today - dt.timedelta(days=days - 1), today, LONG_TYPES)
             short_doc = self.exporter(short_start, end, SHORT_TYPES)
-            hr_doc, hr_from = None, (today - dt.timedelta(days=HR_NADIR_DAYS)).isoformat()
+            hr_doc: list | None = None
+            hr_from = (today - dt.timedelta(days=HR_NADIR_DAYS)).isoformat()
             if self.hr_exporter:
                 try:
-                    hr_doc = self.hr_exporter(hr_from, end, "heart_rate")
-                except Exception as exc:  # optional extra: the summary still ships without overnight lows
-                    log.warning("per-minute heart-rate export failed; skipping hrNadir: %s", exc)
+                    hr_doc = self.minute_hr(today)
+                except Exception as exc:  # optional extra: the summary still ships without these summaries
+                    log.warning("per-minute heart-rate export failed; skipping hrNadir/minHr/azm: %s", exc)
             summary = build_summary(long_doc, short_doc, start=start, end=end, data_modified=mtime,
                                     hr_doc=hr_doc, hr_from=hr_from)
             summary["capabilities"] = {"sync": self.sync_enabled}
