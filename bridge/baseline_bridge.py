@@ -19,7 +19,10 @@ Environment:
                           (the same `zeppbridge-cli sync --mode incremental` your timer runs).
   BASELINE_SYNC_COOLDOWN  default 120 seconds between on-demand syncs
   ZEPPBRIDGE_CLI      default zeppbridge-cli
-  ZEPPBRIDGE_DATA_DIR default /data
+  ZEPPBRIDGE_DATA_DIR default /data (the account the watch syncs to now)
+  BASELINE_EXTRA_LIBRARIES  optional, comma-separated: more ZeppBridge data folders (one account each, e.g. an
+                          older account). They are merged in day by day; the main library wins where both have
+                          a value, and a night with sleep stages beats one without.
   TZ                  set it! ZeppBridge files readings under local days.
 """
 
@@ -41,7 +44,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 SCHEMA = "baseline.v1"
 
 LONG_TYPES = "daily_activity,recovery,pai,sleep,workouts,vo2max,weight,training_load"
@@ -122,14 +125,15 @@ log = logging.getLogger("baseline-bridge")
 Exporter = Callable[[str, str, str], dict]
 
 
-def cli_exporter(start: str, end: str, types: str, detail: str = "summary") -> dict:
-    """Run zeppbridge-cli export and return the parsed JSON document."""
+def cli_exporter(start: str, end: str, types: str, detail: str = "summary", data_dir: str | None = None) -> dict:
+    """Run zeppbridge-cli export (against [data_dir] when given) and return the parsed JSON document."""
     cmd = [
         os.environ.get("ZEPPBRIDGE_CLI", "zeppbridge-cli"),
         "export", "--format", "json", "--detail", detail,
         "--from", start, "--to", end, "--types", types,
     ]
-    proc = subprocess.run(cmd, capture_output=True, timeout=120, check=False)
+    env = dict(os.environ, ZEPPBRIDGE_DATA_DIR=data_dir) if data_dir else None
+    proc = subprocess.run(cmd, capture_output=True, timeout=120, check=False, env=env)
     if proc.returncode != 0:
         msg = proc.stderr.decode("utf-8", "replace").strip()[-400:]
         raise RuntimeError(f"zeppbridge-cli export exited {proc.returncode}: {msg}")
@@ -305,6 +309,16 @@ def build_sleeps(sessions: list[dict], hr: list[tuple[int, float]] | None = None
     return out
 
 
+def _dedupe_weights(ws: list[dict]) -> list[dict]:
+    """Same weigh-in seen by two accounts (within a minute): keep one."""
+    out: list[dict] = []
+    for w in ws:
+        if out and abs(w["t"] - out[-1]["t"]) <= 60:
+            continue
+        out.append(w)
+    return out
+
+
 def build_hourly(samples: list[dict]) -> dict:
     series: dict[str, list] = {"heartRate": [], "stress": [], "spo2": []}
     key = {"heart_rate": "heartRate", "stress": "stress", "spo2": "spo2"}
@@ -356,11 +370,76 @@ def build_workouts(workouts: list[dict]) -> list[dict]:
     return sorted(out, key=lambda w: w["start"])
 
 
+# ---------------------------------------------------------------- merging libraries
+
+def _overlap(a: tuple[int, int], b: tuple[int, int]) -> float:
+    """Overlap as a share of the shorter span."""
+    inter = min(a[1], b[1]) - max(a[0], b[0])
+    shorter = min(a[1] - a[0], b[1] - b[0])
+    return inter / shorter if shorter > 0 and inter > 0 else 0.0
+
+
+def merge_sessions(primary: list[dict], extra: list[dict]) -> list[dict]:
+    """Sleep sessions from two accounts: one per night. Where two overlap by more than half, the one with sleep
+    stages wins (an imported CSV night has none); on a tie the primary account wins."""
+    def span(x: dict) -> tuple[int, int] | None:
+        a, b = _epoch(x.get("start_time")), _epoch(x.get("end_time"))
+        return (a, b) if a is not None and b is not None and b > a else None
+    out = [x for x in primary if span(x)]
+    for e in extra:
+        se = span(e)
+        if se is None:
+            continue
+        clash = next((i for i, p in enumerate(out) if _overlap(span(p), se) > 0.5), None)
+        if clash is None:
+            out.append(e)
+        elif not out[clash].get("stages") and e.get("stages"):
+            out[clash] = e
+    return out
+
+
+def merge_workouts(primary: list[dict], extra: list[dict]) -> list[dict]:
+    """Workouts from two accounts; the same session (starts within 2 minutes) is kept once, primary first."""
+    starts = [_epoch(w.get("start_time")) for w in primary]
+    out = list(primary)
+    for w in extra:
+        t = _epoch(w.get("start_time"))
+        if t is None or any(s is not None and abs(s - t) <= 120 for s in starts):
+            continue
+        out.append(w); starts.append(t)
+    return out
+
+
+def merge_days(primary: list[dict], extra: list[dict]) -> list[dict]:
+    """Day by day, field by field: the primary account's values win, the other fills what it doesn't have."""
+    by_date = {d["date"]: dict(d) for d in extra}
+    for d in primary:
+        by_date.setdefault(d["date"], {}).update(d)
+    return [by_date[k] for k in sorted(by_date)]
+
+
+def merge_readings(primary: list[tuple[int, float]], extra: list[tuple[int, float]]) -> list[tuple[int, float]]:
+    out = dict(extra)
+    out.update(dict(primary))
+    return sorted(out.items())
+
+
 def build_summary(long_doc: dict, short_doc: dict, *, start: str, end: str,
-                  data_modified: float | None, hr_doc: dict | None = None, hr_from: str | None = None) -> dict:
-    """`hr_doc` is an optional --detail full heart_rate export starting on local date `hr_from`."""
+                  data_modified: float | None, hr_doc: dict | None = None, hr_from: str | None = None,
+                  extra_docs: list[dict] | None = None) -> dict:
+    """`hr_doc` is an optional --detail full heart_rate export starting on local date `hr_from`. `extra_docs` are
+    long exports from other accounts' libraries, merged in under the primary one."""
     ld, sd = long_doc.get("data", {}), short_doc.get("data", {})
     days = build_days(ld.get("daily_metrics", []))
+    sessions = ld.get("sleep_sessions", [])
+    workouts_raw = ld.get("workouts", [])
+    samples = list(ld.get("metric_samples", []))
+    for doc in extra_docs or []:
+        xd = doc.get("data", {})
+        days = merge_days(days, build_days(xd.get("daily_metrics", [])))
+        sessions = merge_sessions(sessions, xd.get("sleep_sessions", []))
+        workouts_raw = merge_workouts(workouts_raw, xd.get("workouts", []))
+        samples += xd.get("metric_samples", [])
     hourly = build_hourly(sd.get("metric_samples", []))
     if isinstance(hr_doc, list):  # pre-parsed readings (chunked export)
         hr = hr_doc or None
@@ -369,7 +448,7 @@ def build_summary(long_doc: dict, short_doc: dict, *, start: str, end: str,
     hr_since = None
     if hr_from:
         hr_since = int(dt.datetime.combine(dt.date.fromisoformat(hr_from), dt.time(), _local_tz()).timestamp())
-    sleeps = build_sleeps(ld.get("sleep_sessions", []), hr, hr_since)
+    sleeps = build_sleeps(sessions, hr, hr_since)
     if hr:
         profile_max = next((d["maxHr"] for d in reversed(days) if "maxHr" in d), None)
         by_date = {d["date"]: d for d in days}
@@ -398,8 +477,8 @@ def build_summary(long_doc: dict, short_doc: dict, *, start: str, end: str,
         "days": days,
         "sleeps": sleeps,
         "hourly": hourly,
-        "workouts": build_workouts(ld.get("workouts", [])),
-        "weights": build_weights(ld.get("metric_samples", [])),
+        "workouts": build_workouts(workouts_raw),
+        "weights": _dedupe_weights(build_weights(samples)),
     }
 
 
@@ -408,20 +487,24 @@ def build_summary(long_doc: dict, short_doc: dict, *, start: str, end: str,
 class SummaryCache:
     """Re-exports only when the ZeppBridge library changed on disk."""
 
-    def __init__(self, exporter: Exporter, data_dir: str, hr_exporter: Exporter | None = None):
-        """`hr_exporter` (optional) returns a --detail full heart_rate export, used only for overnight lows."""
+    def __init__(self, exporter: Exporter, data_dir: str, hr_exporter: Exporter | None = None,
+                 extras: list[tuple[str, Exporter, Exporter | None]] | None = None):
+        """`hr_exporter` (optional) returns a --detail full heart_rate export. `extras` are other accounts'
+        libraries as (data_dir, exporter, hr_exporter), merged in under this one."""
         self.exporter, self.data_dir, self.hr_exporter = exporter, data_dir, hr_exporter
+        self.extras = extras or []
         self.sync_enabled = False
         self.lock = threading.Lock()
         self.entries: dict[int, tuple[str, bytes, bytes]] = {}
 
-    def minute_hr(self, today: dt.date) -> list[tuple[int, float]]:
+    def minute_hr(self, today: dt.date, hr_exporter: Exporter | None = None) -> list[tuple[int, float]]:
         """Per-minute heart rate for the last HR_DETAIL_DAYS, exported in HR_CHUNK_DAYS pieces."""
+        hr_exporter = hr_exporter or self.hr_exporter
         readings: dict[int, float] = {}
         start = today - dt.timedelta(days=HR_DETAIL_DAYS)
         while start <= today:
             stop = min(today, start + dt.timedelta(days=HR_CHUNK_DAYS - 1))
-            doc = self.hr_exporter(start.isoformat(), stop.isoformat(), "heart_rate")
+            doc = hr_exporter(start.isoformat(), stop.isoformat(), "heart_rate")
             readings.update(hr_readings(doc.get("data", {}).get("metric_samples", [])))
             del doc
             start = stop + dt.timedelta(days=1)
@@ -429,11 +512,12 @@ class SummaryCache:
 
     def library_mtime(self) -> float | None:
         times = []
-        for name in ("zepp.db", "zepp.db-wal"):
-            try:
-                times.append(os.stat(os.path.join(self.data_dir, name)).st_mtime)
-            except OSError:
-                pass
+        for folder in [self.data_dir] + [d for d, _, _ in self.extras]:
+            for name in ("zepp.db", "zepp.db-wal"):
+                try:
+                    times.append(os.stat(os.path.join(folder, name)).st_mtime)
+                except OSError:
+                    pass
         return max(times) if times else None
 
     def get(self, days: int) -> tuple[str, bytes, bytes]:
@@ -458,8 +542,16 @@ class SummaryCache:
                     hr_doc = self.minute_hr(today)
                 except Exception as exc:  # optional extra: the summary still ships without these summaries
                     log.warning("per-minute heart-rate export failed; skipping hrNadir/minHr/azm: %s", exc)
+            extra_docs = []
+            for folder, ex, hx in self.extras:
+                try:
+                    extra_docs.append(export_range(ex, today - dt.timedelta(days=days - 1), today, LONG_TYPES))
+                    if hx and hr_doc is not None:
+                        hr_doc = merge_readings(hr_doc, self.minute_hr(today, hx))
+                except Exception as exc:  # an extra library never blocks the main one
+                    log.warning("extra library %s skipped: %s", folder, exc)
             summary = build_summary(long_doc, short_doc, start=start, end=end, data_modified=mtime,
-                                    hr_doc=hr_doc, hr_from=hr_from)
+                                    hr_doc=hr_doc, hr_from=hr_from, extra_docs=extra_docs)
             summary["capabilities"] = {"sync": self.sync_enabled}
             body = json.dumps(summary, separators=(",", ":"), ensure_ascii=False).encode()
             entry = (etag, body, gzip.compress(body, 6))
@@ -631,14 +723,18 @@ def main() -> int:
     port = int(os.environ.get("BASELINE_PORT", "8787"))
     bind = os.environ.get("BASELINE_BIND", "0.0.0.0")
     max_days = int(os.environ.get("BASELINE_MAX_DAYS", "730"))
+    def lib(folder: str) -> tuple[str, Exporter, Exporter]:
+        return (folder, lambda s, e, t: cli_exporter(s, e, t, "summary", folder),
+                lambda s, e, t: cli_exporter(s, e, t, "full", folder))
+    extras = [lib(f.strip()) for f in os.environ.get("BASELINE_EXTRA_LIBRARIES", "").split(",") if f.strip()]
     cache = SummaryCache(cli_exporter, os.environ.get("ZEPPBRIDGE_DATA_DIR", "/data"),
-                         hr_exporter=lambda s, e, t: cli_exporter(s, e, t, "full"))
+                         hr_exporter=lambda s, e, t: cli_exporter(s, e, t, "full"), extras=extras)
     sync = SyncJob(os.environ.get("BASELINE_ALLOW_SYNC", "1") not in ("0", "false", "no"),
                    int(os.environ.get("BASELINE_SYNC_COOLDOWN", "120")))
     cache.sync_enabled = sync.enabled
     server = ThreadingHTTPServer((bind, port), make_handler(cache, token, max_days, sync))
-    log.info("Baseline Bridge %s listening on %s:%d (TZ=%s, on-demand sync %s)", VERSION, bind, port,
-             os.environ.get("TZ", "unset"), "on" if sync.enabled else "off")
+    log.info("Baseline Bridge %s listening on %s:%d (TZ=%s, on-demand sync %s, %d extra libraries)", VERSION, bind, port,
+             os.environ.get("TZ", "unset"), "on" if sync.enabled else "off", len(extras))
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -168,6 +168,27 @@ To update the bridge, pull the repo and rebuild: `cd baseline && git pull && cd 
 
 ---
 
+## 9. Signing in again, or adding an older account
+
+ZeppBridge signs in only through its desktop app, and keeps one Zepp account per data folder.
+[`bridge/tools/zeppbridge-signin.sh`](../bridge/tools/zeppbridge-signin.sh) does the round trip for you on a Mac:
+it opens the app against a throwaway folder, you connect **Zepp account** and **Advanced data** (email + password;
+Advanced data doesn't accept Google sign-in), quit, and it copies only the login files to the server.
+
+```bash
+bridge/tools/zeppbridge-signin.sh current   # re-sign-in the account your watch syncs to now
+bridge/tools/zeppbridge-signin.sh old       # an older account, kept for its history
+```
+
+**Merging an older account.** If you switched Zepp accounts (for example from a Google-only account to an email
+one), give the old account an email and password in the Zepp app, sign it in with `old`, run one history sync into
+its own folder, and mount that folder into Baseline Bridge with `BASELINE_EXTRA_LIBRARIES=/data-old`. The bridge
+merges the two day by day: the current account wins where both have a value, the old one fills the rest (such as
+HRV from before the switch), a night with sleep stages beats one without, and shared workouts and weigh-ins
+appear once. Nothing is written back to either Zepp account.
+
+Never press **Disconnect** in the desktop app: it revokes the login at Zepp for every copy, including the server's.
+
 ## Troubleshooting
 
 | Symptom | Fix |

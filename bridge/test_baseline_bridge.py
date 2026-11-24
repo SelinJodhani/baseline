@@ -105,7 +105,7 @@ class NadirTest(unittest.TestCase):
         night, nap_out = s["sleeps"]
         self.assertEqual(night["hrNadir"]["bpm"], 48)
         self.assertNotIn("hrNadir", nap_out)
-        self.assertEqual(s["bridgeVersion"], "0.4.0")
+        self.assertEqual(s["bridgeVersion"], "0.5.0")
         # Nights that start before the per-minute export window get nothing (a partial night would mislead).
         s2 = b.build_summary(long_doc, SHORT, start="2026-01-01", end="2026-01-02", data_modified=None,
                              hr_doc=hr_doc, hr_from="2026-01-03")
@@ -153,6 +153,73 @@ class NadirTest(unittest.TestCase):
         # No max HR: min HR only. Too few readings: nothing.
         self.assertNotIn("azm", b.day_hr_summaries(readings, max_hr=None, tz=utc)["2026-01-05"])
         self.assertEqual(b.day_hr_summaries(readings[:600], max_hr=190.0, tz=utc), {})
+
+
+class MergeTest(unittest.TestCase):
+    """Two accounts' libraries: the current one (with an imported CSV of the old account's basics) and the old
+    account itself (with HRV and sleep stages)."""
+    CURRENT = {"data": {
+        "daily_metrics": [
+            {"date": "2026-01-02", "metric": "steps", "value": 9000.0, "source_scope": "user_fused"},
+            {"date": "2026-11-20", "metric": "steps", "value": 5000.0, "source_scope": "user_fused"},
+            {"date": "2026-11-20", "metric": "sleep_hrv", "value": 66.0, "source_scope": "device"},
+        ],
+        "sleep_sessions": [{  # imported from CSV: no stages
+            "start_time": "2026-01-01T23:00:00+00:00", "end_time": "2026-01-02T07:00:00+00:00", "duration_minutes": 450,
+        }],
+        "workouts": [{"workout_id": 1, "workout_type": "run", "start_time": "2026-01-02T10:00:00+00:00", "end_time": "2026-01-02T10:30:00+00:00"}],
+        "metric_samples": [{"metric": "weight", "timestamp": "2026-01-02T07:00:00+00:00", "value": 61.0}],
+    }}
+    OLD = {"data": {
+        "daily_metrics": [
+            {"date": "2026-01-02", "metric": "steps", "value": 8800.0, "source_scope": "user_fused"},
+            {"date": "2026-01-02", "metric": "sleep_hrv", "value": 58.0, "source_scope": "device"},
+            {"date": "2025-06-01", "metric": "steps", "value": 7000.0, "source_scope": "user_fused"},
+        ],
+        "sleep_sessions": [
+            {"start_time": "2026-01-01T23:05:00+00:00", "end_time": "2026-01-02T06:55:00+00:00", "duration_minutes": 440,
+             "stages": [{"start_time": "2026-01-01T23:05:00+00:00", "end_time": "2026-01-02T00:00:00+00:00", "stage": "light"}]},
+            {"start_time": "2025-05-31T23:00:00+00:00", "end_time": "2025-06-01T06:00:00+00:00", "duration_minutes": 400},
+        ],
+        "workouts": [
+            {"workout_id": 9, "workout_type": "run", "start_time": "2026-01-02T10:01:00+00:00", "end_time": "2026-01-02T10:31:00+00:00"},
+            {"workout_id": 8, "workout_type": "walk", "start_time": "2025-06-01T09:00:00+00:00", "end_time": "2025-06-01T10:00:00+00:00"},
+        ],
+        "metric_samples": [{"metric": "weight", "timestamp": "2026-01-02T07:00:30+00:00", "value": 61.0}],
+    }}
+
+    def test_merge(self):
+        s = b.build_summary(self.CURRENT, SHORT, start="2025-01-01", end="2026-11-22", data_modified=None, extra_docs=[self.OLD])
+        days = {d["date"]: d for d in s["days"]}
+        self.assertEqual(days["2026-01-02"]["steps"], 9000)          # current account wins
+        self.assertEqual(days["2026-01-02"]["sleepHrv"], 58.0)        # old account fills HRV
+        self.assertEqual(days["2025-06-01"]["steps"], 7000)          # days only the old account has
+        self.assertEqual(days["2026-11-20"]["sleepHrv"], 66.0)
+        self.assertEqual(len(s["sleeps"]), 2)                        # the shared night once...
+        night = [x for x in s["sleeps"] if x["durationMin"] in (440, 450)][0]
+        self.assertEqual(night["durationMin"], 440)                  # ...the staged one wins over the CSV import
+        self.assertEqual(len(s["workouts"]), 2)                      # the run once, plus the old walk
+        self.assertEqual(len(s["weights"]), 1)                       # same weigh-in once
+
+    def test_no_extras_is_unchanged(self):
+        a = b.build_summary(self.CURRENT, SHORT, start="2025-01-01", end="2026-11-22", data_modified=None)
+        c = b.build_summary(self.CURRENT, SHORT, start="2025-01-01", end="2026-11-22", data_modified=None, extra_docs=[])
+        a.pop("generatedAt"); c.pop("generatedAt")
+        self.assertEqual(a, c)
+
+    def test_cache_merges_extra_library(self):
+        def current(start, end, types):
+            return self.CURRENT if "sleep" in types else SHORT
+        def old(start, end, types):
+            return self.OLD
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as d2:
+            doc = json.loads(b.SummaryCache(current, d, extras=[(d2, old, None)]).get(30)[1])
+            self.assertTrue(any(x.get("sleepHrv") == 58.0 for x in doc["days"]))
+            # A broken extra library never takes the main one down.
+            def broken(start, end, types):
+                raise RuntimeError("boom")
+            doc2 = json.loads(b.SummaryCache(current, d, extras=[(d2, broken, None)]).get(30)[1])
+            self.assertTrue(any(x.get("steps") == 9000 for x in doc2["days"]))
 
 
 class SyncTest(unittest.TestCase):
