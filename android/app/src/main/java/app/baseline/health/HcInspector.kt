@@ -50,7 +50,7 @@ class HcInspector(private val context: Context) {
     suspend fun canRead(): Boolean = HealthConnectSync.available(context) &&
         runCatching { client.permissionController.getGrantedPermissions().containsAll(READ) }.getOrDefault(false)
 
-    suspend fun inspect(summary: Summary?, days: Int = 30): Report = withContext(Dispatchers.IO) {
+    suspend fun inspect(summary: Summary?, googleHrv: Boolean = false, days: Int = 30): Report = withContext(Dispatchers.IO) {
         val now = Instant.now()
         val range = TimeRangeFilter.between(now.minus(Duration.ofDays(days.toLong())), now)
         val recs = mutableListOf<HcCheck.Rec>()
@@ -94,7 +94,9 @@ class HcInspector(private val context: Context) {
             days = days,
             rows = rows,
             others = HcCheck.otherWriters(rows, context.packageName),
-            lastNight = HcCheck.lastNight(nights, hrv, summary, zone),
+            lastNight = HcCheck.lastNight(nights, hrv, summary, zone) { n ->
+                if (googleHrv) HcPlanner.googleHrvShift(HcPlanner.Night(n.start, n.end, emptyList(), null), zone) else 0
+            },
             stepsToday = steps,
             zeppStepsToday = summary?.days?.firstOrNull { it.date == today.toString() }?.steps?.toLong(),
             readAt = now.epochSecond,

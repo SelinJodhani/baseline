@@ -115,4 +115,36 @@ object HcPlanner {
 
     /** Round an epoch down to its clock hour. */
     fun floorHour(t: Long): Long = t - Math.floorMod(t, 3600L)
+
+    // ------------------------------------------------------------------ Google Health HRV dates (optional)
+    //
+    // Google Health files a night's HRV under the UTC calendar date of that night's first reading, and averages the
+    // readings that follow it, also ones after wake-up (measured 24 Nov 2026 with synthetic nights: a 02:00–09:30 IST
+    // night landed on the day before; the same night with its readings moved 5 h 30 m later landed on the wake-up
+    // day; readings up to 5½ h after wake-up still counted; readings hours before bedtime did not). For anyone
+    // east of UTC who falls asleep after local midnight, every night therefore shows up a day early.
+    //
+    // With the option on, each settled night's readings (only those inside the night, so the average stays Zepp's
+    // sleep HRV) are moved later by one fixed amount, so the first lands just after 00:00 UTC on the wake-up date.
+    // Values, order and spacing are unchanged; only the clock times move.
+
+    /** Just past the UTC day change, so the first reading is safely on the wake-up date. */
+    const val GOOGLE_DAY_MARGIN_SEC = 15 * 60L
+
+    /** Never move readings further than this (beyond it Google may stop counting them); such nights stay as they are. */
+    const val GOOGLE_MAX_SHIFT_SEC = 8 * 3600L
+
+    /** How far a night's HRV readings move for Google Health: 0 when the night already starts on its wake-up date in UTC. */
+    fun googleHrvShift(night: Night, zone: ZoneId): Long {
+        val wake = Instant.ofEpochSecond(night.end).atZone(zone).toLocalDate()
+        val utcDay = wake.atStartOfDay(java.time.ZoneOffset.UTC).toEpochSecond()
+        val shift = utcDay + GOOGLE_DAY_MARGIN_SEC - night.start
+        return if (shift <= 0 || shift > GOOGLE_MAX_SHIFT_SEC) 0 else shift
+    }
+
+    /** The night's readings (inside it only) as (original time, moved point). */
+    fun googleHrv(night: Night, hrv: List<Point>, zone: ZoneId): List<Pair<Long, Point>> {
+        val shift = googleHrvShift(night, zone)
+        return hrv.filter { it.t >= night.start && it.t < night.end }.sortedBy { it.t }.map { it.t to Point(it.t + shift, it.v) }
+    }
 }

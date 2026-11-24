@@ -117,7 +117,24 @@ fun HealthConnectCard(vm: AppViewModel, s: AppSettings, bridgeHasSamples: Boolea
         if (on) {
             Text(statusLine(status), style = MaterialTheme.typography.bodySmall,
                 color = if (status.lastError != null && !status.running) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(12.dp))
+            ListItem(
+                headlineContent = { Text("Date HRV the way Google Health reads it") },
+                supportingContent = {
+                    Text(
+                        "Google Health files a night's HRV under the UTC date of its first reading, so a night you fall asleep after midnight shows up on the day before. " +
+                            "This moves each finished night's HRV readings a few hours later, just past midnight UTC, so Google files it under the day you woke up. " +
+                            "The values stay Zepp's; other apps see these readings later than they happened.",
+                    )
+                },
+                trailingContent = {
+                    Switch(checked = s.healthConnectGoogleHrv, onCheckedChange = { c ->
+                        vm.update { it.copy(healthConnectGoogleHrv = c) }
+                        scope.launch { kotlinx.coroutines.delay(300); sync.run() }
+                    }, enabled = !status.running)
+                },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            )
+            Spacer(Modifier.height(4.dp))
             Text("How far back", style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(6.dp))
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {

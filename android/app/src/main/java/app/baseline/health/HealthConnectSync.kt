@@ -81,6 +81,8 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
         val lastRunAt: Long? = null,
         val lastError: String? = null,
         val lastWritten: Map<String, Int> = emptyMap(),
+        /** How the HRV currently in Health Connect was written: "recorded" (true times) or "google" (moved per night). */
+        val hrvMode: String = "recorded",
     )
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
@@ -108,7 +110,7 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
         val settings = store.settings.first()
         if (!settings.healthConnect || settings.demo || settings.serverUrl.isBlank()) return null
         _status.update { it.copy(running = true, progress = "Starting…") }
-        val outcome = runCatching { withContext(Dispatchers.IO) { copy(settings.healthConnectDays) } }
+        val outcome = runCatching { withContext(Dispatchers.IO) { copy(settings.healthConnectDays, settings.healthConnectGoogleHrv) } }
         val error = outcome.exceptionOrNull()?.let { describe(it) }
         val st = load().copy(lastRunAt = Repository.nowSec(), lastError = error, lastWritten = outcome.getOrNull() ?: load().lastWritten)
         save(st)
@@ -116,7 +118,7 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
         error
     }
 
-    private suspend fun copy(days: Int): Map<String, Int> {
+    private suspend fun copy(days: Int, googleHrv: Boolean): Map<String, Int> {
         if (!available(context)) throw IllegalStateException("Health Connect isn't available on this phone")
         if (!hasPermissions()) throw SecurityException("permissions")
         if (repo.state.value.summary == null) repo.loadInitial()
@@ -128,6 +130,15 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
         var st = load()
         val counts = linkedMapOf<String, Int>()
         fun count(kind: String, n: Int) { if (n > 0) counts[kind] = (counts[kind] ?: 0) + n }
+
+        // 0. The HRV option changed: delete every HRV reading Baseline wrote and copy them again the other way.
+        val hrvMode = if (googleHrv) "google" else "recorded"
+        if (st.hrvMode != hrvMode) {
+            _status.update { it.copy(progress = "Rewriting HRV…") }
+            client.deleteRecords(HeartRateVariabilityRmssdRecord::class, TimeRangeFilter.between(Instant.EPOCH, Instant.now().plusSeconds(2 * 86_400L)))
+            st = st.copy(hrvMode = hrvMode, samplesUntil = 0, written = st.written.filterKeys { !it.startsWith("baseline-hrvnight-") })
+            save(st)
+        }
 
         // 1. Readings, in week-long windows from the watermark (minus 2 h, hour-aligned, so late uploads and the
         //    hour in progress are re-sent whole).
@@ -144,7 +155,8 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
                 build { HeartRateRecord(at(h.start), off(h.start, zone), at(h.end), off(h.end, zone),
                     h.samples.map { HeartRateRecord.Sample(at(it.t), it.v.toLong()) }, Metadata.autoRecorded(dev, "baseline-hr-${h.start}", version)) }
             }
-            val hrv = HcPlanner.points(s.hrv, 1.0, 200.0).mapNotNull { p ->
+            // With the Google Health option, HRV is written per settled night instead (step 2).
+            val hrv = if (googleHrv) emptyList<HeartRateVariabilityRmssdRecord>() else HcPlanner.points(s.hrv, 1.0, 200.0).mapNotNull { p ->
                 build { HeartRateVariabilityRmssdRecord(at(p.t), off(p.t, zone), p.v, Metadata.autoRecorded(dev, "baseline-hrv-${p.t}", version)) }
             }
             val spo2 = HcPlanner.points(s.spo2, 50.0, 100.0).mapNotNull { p ->
@@ -188,6 +200,22 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
         if (replaced.isNotEmpty()) {
             client.deleteRecords(SleepSessionRecord::class, emptyList(), replaced.distinct())
             replaced.forEach { nightSpans.remove(it); written.remove(it) }
+        }
+        if (googleHrv) for (n in nights) {
+            // Each night's readings, moved so Google Health files the night under the wake-up day (HcPlanner).
+            // Written once all moved times are in the past; a reading keeps its id, so switching modes moves it.
+            val shift = HcPlanner.googleHrvShift(n, zone)
+            val id = "baseline-hrvnight-${n.start}"
+            val fingerprint = "${n.start}|${n.end}|$shift"
+            if (now < n.end + shift || written[id] == fingerprint) continue
+            _status.update { it.copy(progress = "Lining up HRV for ${Instant.ofEpochSecond(n.end).atZone(zone).toLocalDate()}…") }
+            val s = repo.fetchSamples(n.start, n.end)
+            val records = HcPlanner.googleHrv(n, HcPlanner.points(s.hrv, 1.0, 200.0), zone).mapNotNull { (orig, p) ->
+                build { HeartRateVariabilityRmssdRecord(at(p.t), off(p.t, zone), p.v, Metadata.autoRecorded(dev, "baseline-hrv-$orig", version)) }
+            }
+            put(records)
+            count("HRV", records.size)
+            written[id] = fingerprint
         }
         val main = HcPlanner.mainNights(nights, zone)
         for (d in HcPlanner.dayTotals(summary, sinceDate, now, zone)) {

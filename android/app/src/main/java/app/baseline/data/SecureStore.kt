@@ -57,6 +57,11 @@ data class AppSettings(
     val healthConnect: Boolean = false,
     /** How many days back the first Health Connect copy goes. */
     val healthConnectDays: Int = 30,
+    /**
+     * Move each night's HRV readings so Google Health files the night under the day you woke up (it dates HRV by
+     * the UTC date of the first reading). See HcPlanner.googleHrvShift.
+     */
+    val healthConnectGoogleHrv: Boolean = false,
 )
 
 /**

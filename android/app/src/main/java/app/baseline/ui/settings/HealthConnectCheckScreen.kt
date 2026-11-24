@@ -57,6 +57,7 @@ fun HealthConnectCheckScreen(vm: AppViewModel, onBack: () -> Unit) {
     val ctx = LocalContext.current
     val inspector = remember { HcInspector(ctx.applicationContext) }
     val data by vm.data.collectAsStateWithLifecycle()
+    val settings by vm.settings.collectAsStateWithLifecycle()
     var canRead by remember { mutableStateOf<Boolean?>(null) }
     var report by remember { mutableStateOf<HcInspector.Report?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -69,7 +70,7 @@ fun HealthConnectCheckScreen(vm: AppViewModel, onBack: () -> Unit) {
         if (canRead == null || reload > 0) canRead = inspector.canRead()
         if (canRead == true) {
             report = null; error = null
-            runCatching { inspector.inspect(data.summary) }
+            runCatching { inspector.inspect(data.summary, googleHrv = settings?.healthConnectGoogleHrv == true) }
                 .onSuccess { report = it }
                 .onFailure { error = HealthConnectSync.describe(it) }
         }

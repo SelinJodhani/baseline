@@ -53,9 +53,11 @@ object HcCheck {
      * The most recent night in Health Connect (from any app), set against Zepp's own: its times from the summary's
      * sleeps, and its nightly HRV from that wake-up day's `sleepHrv`.
      */
-    fun lastNight(nights: List<Night>, hrv: List<Pair<Long, Double>>, summary: Summary?, zone: ZoneId): NightCheck? {
+    fun lastNight(nights: List<Night>, hrv: List<Pair<Long, Double>>, summary: Summary?, zone: ZoneId, hrvShift: (Night) -> Long = { 0 }): NightCheck? {
         val n = nights.filter { it.end - it.start >= 3 * 3600 }.maxByOrNull { it.end } ?: nights.maxByOrNull { it.end } ?: return null
-        val inside = hrv.filter { (t, _) -> t >= n.start && t < n.end }.map { it.second }
+        // With the Google Health option on, the night's readings sit [shift] later than the night itself.
+        val shift = hrvShift(n)
+        val inside = hrv.filter { (t, _) -> t >= n.start + shift && t < n.end + shift }.map { it.second }
         val zepp = summary?.sleeps?.filter { it.start < n.end && n.start < it.end }?.maxByOrNull { minOf(it.end, n.end) - maxOf(it.start, n.start) }
         val wakeDay = Instant.ofEpochSecond(zepp?.end ?: n.end).atZone(zone).toLocalDate().toString()
         val zeppHrv = summary?.days?.firstOrNull { it.date == wakeDay }?.sleepHrv

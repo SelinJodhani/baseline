@@ -110,6 +110,32 @@ class HcPlannerTest {
         assertEquals(listOf(HcPlanner.Point(150, 72.3)), HcPlanner.weights(s, 0, 1000))
     }
 
+    @Test fun `Google HRV shift puts a night's first reading just past midnight UTC on the wake-up day`() {
+        fun night(a: String, b: String) = HcPlanner.Night(t(a), t(b), emptyList(), null)
+        val n = night("2026-11-24T02:00", "2026-11-24T09:29")
+        assertEquals(3 * 3600L + 45 * 60, HcPlanner.googleHrvShift(n, ist)) // to 05:45 IST = 00:15 UTC
+        val moved = HcPlanner.googleHrv(n, listOf(
+            HcPlanner.Point(t("2026-11-24T01:00"), 99.0),  // before the night: not written
+            HcPlanner.Point(t("2026-11-24T02:00"), 70.0),
+            HcPlanner.Point(t("2026-11-24T09:00"), 80.0),
+            HcPlanner.Point(t("2026-11-24T12:00"), 99.0),  // after it: not written
+        ), ist)
+        assertEquals(listOf(70.0, 80.0), moved.map { it.second.v })
+        assertEquals(t("2026-11-24T02:00"), moved[0].first) // keeps its original time for the record id
+        val firstUtc = java.time.Instant.ofEpochSecond(moved[0].second.t).atZone(java.time.ZoneOffset.UTC).toLocalDate()
+        assertEquals(LocalDate.parse("2026-11-24"), firstUtc)
+        // Already on the wake-up day in UTC (after 05:30 IST): at most the margin.
+        assertEquals(10 * 60L, HcPlanner.googleHrvShift(night("2026-10-10T05:35", "2026-10-10T09:30"), ist))
+        assertEquals(0L, HcPlanner.googleHrvShift(night("2026-10-10T06:00", "2026-10-10T09:30"), ist))
+        // Bedtime before midnight: moved to the wake-up day too.
+        assertEquals(6 * 3600L + 35 * 60, HcPlanner.googleHrvShift(night("2026-11-08T23:10", "2026-11-09T07:38"), ist))
+        // Far east of UTC the move would be too big for Google to keep counting: left alone.
+        val nz = java.time.ZoneOffset.ofHours(12)
+        val far = HcPlanner.Night(java.time.LocalDateTime.parse("2026-11-23T22:00").atZone(nz).toEpochSecond(),
+            java.time.LocalDateTime.parse("2026-11-24T06:00").atZone(nz).toEpochSecond(), emptyList(), null)
+        assertEquals(0L, HcPlanner.googleHrvShift(far, nz))
+    }
+
     @Test fun `zepp workout types map to Health Connect types`() {
         assertEquals(androidx.health.connect.client.records.ExerciseSessionRecord.EXERCISE_TYPE_RUNNING_TREADMILL, HealthConnectSync.exerciseType("treadmill"))
         assertEquals(androidx.health.connect.client.records.ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT, HealthConnectSync.exerciseType("unknown:15"))
