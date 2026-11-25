@@ -162,24 +162,35 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
             )
             save(st)
         }
-        // 0b. The HRV option changed, or (v0.6.2–0.7.1) HRV was rewritten under its old ids, which Google Health took
-        //     as edits and ignored: delete every HRV reading Baseline wrote and copy them again under new ids. The
-        //     same upgrade also checks heart rate once for hours that never arrived.
+        // 0b. The HRV option changed, or an upgrade: delete every HRV reading Baseline wrote and copy them again under
+        //     new ids. v0.6.2–0.7.1 rewrote HRV under its old ids, which Google Health took as edits and ignored; and
+        //     Google Health only picks up what changes after it's given Health Connect access, so v0.7.3 writes it
+        //     all once more (25 Nov 2026: access granted at 12:25, HRV rewritten at 00:31 never showed up). The
+        //     v0.7.2 upgrade also checks heart rate once for hours that never arrived.
         val hrvMode = if (googleHrv) "google" else "recorded"
-        if (st.hrvMode != hrvMode || st.scheme < 3) {
+        val modeChanged = st.hrvMode != hrvMode
+        if (modeChanged || st.scheme < 4) {
             _status.update { it.copy(progress = "Rewriting HRV…") }
             client.deleteRecords(HeartRateVariabilityRmssdRecord::class, everything)
             st = st.copy(
                 hrvMode = hrvMode, hrvUntil = 0, gen = st.gen + 1,
                 written = st.written.filterKeys { !it.startsWith("baseline-hrvnight-") },
-                hrCheck = st.hrCheck || st.scheme < 3, scheme = 3,
+                hrCheck = st.hrCheck || st.scheme < 3, scheme = maxOf(st.scheme, 3),
             )
+            save(st)
+        }
+        // 0c. SpO₂ is a night value in Google Health too, filed a day early the same way (v0.7.3): it follows the same
+        //     option. Delete Baseline's SpO₂ once (and on every option change) and copy it again under new ids.
+        if (modeChanged || st.scheme < 4) {
+            _status.update { it.copy(progress = "Rewriting SpO₂…") }
+            client.deleteRecords(OxygenSaturationRecord::class, everything)
+            st = st.copy(spo2Until = 0, gen = st.gen + 1, written = st.written.filterKeys { !it.startsWith("baseline-spo2night-") }, scheme = 4)
             save(st)
         }
 
         // 1. Readings, in week-long windows from the oldest per-series watermark (minus 2 h for late uploads). Only
         //    readings newer than their series' watermark are written, so nothing is ever sent twice.
-        val marks = listOf(st.hrUntil, st.spo2Until) + (if (googleHrv) emptyList() else listOf(st.hrvUntil))
+        val marks = listOf(st.hrUntil) + (if (googleHrv) emptyList() else listOf(st.spo2Until, st.hrvUntil))
         var cursor = HcPlanner.floorHour(if (marks.all { it > 0 }) maxOf(historyStart, marks.min() - 7_200) else historyStart)
         var lastReading = st.samplesUntil.takeIf { it > 0 }
         while (cursor < now) {
@@ -198,7 +209,8 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
             val hrv = hrvPts.mapNotNull { p ->
                 build { HeartRateVariabilityRmssdRecord(at(p.t), off(p.t, zone), p.v, Metadata.autoRecorded(dev, HcPlanner.recordId("hrv", st.gen, p.t), 1)) }
             }
-            val spo2Pts = HcPlanner.points(s.spo2, 50.0, 100.0).filter { it.t > st.spo2Until }
+            // With the Google Health option, SpO₂ waits for its night to settle too (step 2).
+            val spo2Pts = if (googleHrv) emptyList() else HcPlanner.points(s.spo2, 50.0, 100.0).filter { it.t > st.spo2Until }
             val spo2 = spo2Pts.mapNotNull { p ->
                 build { OxygenSaturationRecord(at(p.t), off(p.t, zone), Percentage(p.v), Metadata.autoRecorded(dev, HcPlanner.recordId("spo2", st.gen, p.t), 1)) }
             }
@@ -257,21 +269,56 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
             client.deleteRecords(SleepSessionRecord::class, emptyList(), replaced.distinct())
             replaced.forEach { nightSpans.remove(it); written.remove(it) }
         }
-        if (googleHrv) for (n in nights) {
-            // Each night's readings, moved so Google Health files the night under the wake-up day (HcPlanner).
-            // Written once all moved times are in the past, under this generation's ids.
-            val shift = HcPlanner.googleHrvShift(n, zone)
-            val id = "baseline-hrvnight-${n.start}"
-            val fingerprint = "${n.start}|${n.end}|$shift"
-            if (now < n.end + shift || written[id] == fingerprint) continue
-            _status.update { it.copy(progress = "Lining up HRV for ${Instant.ofEpochSecond(n.end).atZone(zone).toLocalDate()}…") }
-            val s = repo.fetchSamples(n.start, n.end)
-            val records = HcPlanner.googleHrv(n, HcPlanner.points(s.hrv, 1.0, 200.0), zone).mapNotNull { (orig, p) ->
-                build { HeartRateVariabilityRmssdRecord(at(p.t), off(p.t, zone), p.v, Metadata.autoRecorded(dev, HcPlanner.recordId("hrv", st.gen, orig), 1)) }
+        if (googleHrv) {
+            // SpO₂ outside the nights (daytime spot checks) keeps its real times. It's written up to the end of the
+            // latest settled night, so a reading that turns out to belong to a night still in progress isn't written
+            // twice (once as it happened, once moved).
+            val settledEnd = nights.maxOfOrNull { it.end }
+            if (settledEnd != null && settledEnd > st.spo2Until) {
+                var c = HcPlanner.floorHour(maxOf(st.spo2Until, historyStart))
+                while (c < settledEnd) {
+                    val to = minOf(settledEnd, c + 7 * 86_400L)
+                    _status.update { it.copy(progress = "Copying SpO₂ from ${Instant.ofEpochSecond(c).atZone(zone).toLocalDate()}…") }
+                    val s = repo.fetchSamples(c, to)
+                    val day = HcPlanner.outsideNights(HcPlanner.points(s.spo2, 50.0, 100.0), nights).filter { it.t > st.spo2Until && it.t <= settledEnd }
+                    val records = day.mapNotNull { p ->
+                        build { OxygenSaturationRecord(at(p.t), off(p.t, zone), Percentage(p.v), Metadata.autoRecorded(dev, HcPlanner.recordId("spo2", st.gen, p.t), 1)) }
+                    }
+                    put(records)
+                    count("SpO₂", records.size)
+                    c = to
+                }
+                st = st.copy(spo2Until = settledEnd)
+                save(st)
             }
-            put(records)
-            count("HRV", records.size)
-            written[id] = fingerprint
+        }
+        if (googleHrv) for (n in nights) {
+            // Each night's HRV and SpO₂, moved so Google Health files the night under the wake-up day (HcPlanner).
+            // Written once all moved times are in the past, under this generation's ids; each kind is tracked on its
+            // own, so adding SpO₂ never re-sends HRV that's already there.
+            val shift = HcPlanner.googleHrvShift(n, zone)
+            val fingerprint = "${n.start}|${n.end}|$shift"
+            val hrvKey = "baseline-hrvnight-${n.start}"
+            val spo2Key = "baseline-spo2night-${n.start}"
+            if (now < n.end + shift || (written[hrvKey] == fingerprint && written[spo2Key] == fingerprint)) continue
+            _status.update { it.copy(progress = "Lining up the night of ${Instant.ofEpochSecond(n.end).atZone(zone).toLocalDate()}…") }
+            val s = repo.fetchSamples(n.start, n.end)
+            if (written[hrvKey] != fingerprint) {
+                val records = HcPlanner.googleHrv(n, HcPlanner.points(s.hrv, 1.0, 200.0), zone).mapNotNull { (orig, p) ->
+                    build { HeartRateVariabilityRmssdRecord(at(p.t), off(p.t, zone), p.v, Metadata.autoRecorded(dev, HcPlanner.recordId("hrv", st.gen, orig), 1)) }
+                }
+                put(records)
+                count("HRV", records.size)
+                written[hrvKey] = fingerprint
+            }
+            if (written[spo2Key] != fingerprint) {
+                val records = HcPlanner.googleHrv(n, HcPlanner.points(s.spo2, 50.0, 100.0), zone).mapNotNull { (orig, p) ->
+                    build { OxygenSaturationRecord(at(p.t), off(p.t, zone), Percentage(p.v), Metadata.autoRecorded(dev, HcPlanner.recordId("spo2", st.gen, orig), 1)) }
+                }
+                put(records)
+                count("SpO₂", records.size)
+                written[spo2Key] = fingerprint
+            }
         }
         val main = HcPlanner.mainNights(nights, zone)
         // Daily totals grow by adding a record for what's new since the last one (HcPlanner.dayStep).

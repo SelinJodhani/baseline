@@ -20,7 +20,13 @@ import java.time.ZoneId
  *  - Resting heart rate and breathing rate are night values in Zepp, so they wait for that night to settle.
  */
 object HcPlanner {
-    const val SLEEP_SETTLE_SEC = 90 * 60L
+    /**
+     * How long after a night's end Zepp must have readings before the night counts as finished. The Zepp app uploads
+     * mostly when it's opened, so the first upload after waking often carries only ~20–30 minutes past the end (25 Nov
+     * 2026: night ended 9:06, readings to 9:29, then nothing for hours). Zepp's 5 am in-progress copies end within a
+     * few minutes of their last reading, so 20 minutes still tells them apart.
+     */
+    const val SLEEP_SETTLE_SEC = 20 * 60L
 
     data class Point(val t: Long, val v: Double)
     data class HrHour(val start: Long, val end: Long, val samples: List<Point>)
@@ -211,7 +217,11 @@ object HcPlanner {
         return if (shift <= 0 || shift > GOOGLE_MAX_SHIFT_SEC) 0 else shift
     }
 
-    /** The night's readings (inside it only) as (original time, moved point). */
+    /** Readings that fall in none of [nights] (daytime spot checks), which keep their real times. */
+    fun outsideNights(points: List<Point>, nights: List<Night>): List<Point> =
+        points.filter { p -> nights.none { p.t >= it.start && p.t < it.end } }
+
+    /** The night's readings (inside it only) as (original time, moved point). Used for HRV and SpO₂ alike. */
     fun googleHrv(night: Night, hrv: List<Point>, zone: ZoneId): List<Pair<Long, Point>> {
         val shift = googleHrvShift(night, zone)
         return hrv.filter { it.t >= night.start && it.t < night.end }.sortedBy { it.t }.map { it.t to Point(it.t + shift, it.v) }

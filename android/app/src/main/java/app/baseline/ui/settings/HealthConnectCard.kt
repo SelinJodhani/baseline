@@ -117,9 +117,9 @@ fun HealthConnectCard(vm: AppViewModel, s: AppSettings, bridgeHasSamples: Boolea
             Text(statusLine(status), style = MaterialTheme.typography.bodySmall,
                 color = if (status.lastError != null && !status.running) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
             app.baseline.ui.common.SwitchRow(
-                "Date HRV the way Google Health reads it",
-                "Google Health files a night's HRV under the UTC date of its first reading, so a night you fall asleep after midnight shows up on the day before. " +
-                    "This moves each finished night's HRV readings a few hours later, just past midnight UTC, so Google files it under the day you woke up. " +
+                "Date HRV and SpO₂ the way Google Health reads them",
+                "Google Health files a night's HRV and SpO₂ under the UTC date of its first reading, so a night you fall asleep after midnight shows up on the day before. " +
+                    "This moves each finished night's HRV and SpO₂ readings a few hours later, just past midnight UTC, so Google files them under the day you woke up. " +
                     "The values stay Zepp's; other apps see these readings later than they happened.",
             ) {
                 Switch(checked = s.healthConnectGoogleHrv, onCheckedChange = { c ->

@@ -33,8 +33,9 @@ class HcPlannerTest {
         // Zepp synced at 4:54 am: last reading two minutes after the "end", so the night is still open.
         assertTrue(HcPlanner.settledNights(s, 0, t("2026-11-24T04:54"), t("2026-11-24T05:00")).isEmpty())
         val done = Summary(sleeps = listOf(full))
-        assertTrue(HcPlanner.settledNights(done, 0, t("2026-11-24T10:30"), t("2026-11-24T11:00")).isEmpty())
-        val nights = HcPlanner.settledNights(done, 0, t("2026-11-24T11:00"), t("2026-11-24T11:05"))
+        // Woke at 9:29; Zepp's upload reaches only 9:40: not yet. By 9:52 (23 minutes on, like 25 Nov): finished.
+        assertTrue(HcPlanner.settledNights(done, 0, t("2026-11-24T09:40"), t("2026-11-24T11:00")).isEmpty())
+        val nights = HcPlanner.settledNights(done, 0, t("2026-11-24T09:52"), t("2026-11-24T11:05"))
         assertEquals(1, nights.size)
         assertEquals(listOf(
             HcPlanner.Stage(t("2026-11-24T02:00"), t("2026-11-24T03:00"), "light"),
@@ -182,6 +183,18 @@ class HcPlannerTest {
         assertEquals(t("2026-10-28T10:20") + 1, fill.first().end)
         // Nothing left to add once every hour is there.
         assertTrue(HcPlanner.missingHours(pts, fill.map { HcPlanner.floorHour(it.start) }.toSet() + covered, t("2026-10-28T09:30"), t("2026-10-28T12:30")).isEmpty())
+    }
+
+    @Test fun `daytime SpO2 keeps its times, readings inside a night are left for the night`() {
+        val night = HcPlanner.Night(t("2026-11-24T02:00"), t("2026-11-24T09:29"), emptyList(), null)
+        val pts = listOf("2026-11-23T19:00", "2026-11-24T02:00", "2026-11-24T05:10", "2026-11-24T09:29", "2026-11-24T19:00")
+            .map { HcPlanner.Point(t(it), 98.0) }
+        assertEquals(listOf("2026-11-23T19:00", "2026-11-24T09:29", "2026-11-24T19:00").map { t(it) },
+            HcPlanner.outsideNights(pts, listOf(night)).map { it.t })
+        // The same mover as HRV: the night's first reading lands just past midnight UTC on the wake-up day.
+        val moved = HcPlanner.googleHrv(night, pts, ist)
+        assertEquals(2, moved.size)
+        assertEquals(java.time.LocalDate.parse("2026-11-24"), java.time.Instant.ofEpochSecond(moved.first().second.t).atZone(java.time.ZoneOffset.UTC).toLocalDate())
     }
 
     @Test fun `zepp workout types map to Health Connect types`() {
