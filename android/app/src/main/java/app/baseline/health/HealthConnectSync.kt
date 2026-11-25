@@ -301,31 +301,36 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
             }
         }
         if (googleHrv) for (n in nights) {
-            // Each night's HRV and SpO₂, moved so Google Health files the night under the wake-up day (HcPlanner).
-            // Written once all moved times are in the past, under this generation's ids; each kind is tracked on its
-            // own, so adding SpO₂ never re-sends HRV that's already there.
-            val shift = HcPlanner.googleHrvShift(n, zone)
-            val fingerprint = "${n.start}|${n.end}|$shift"
+            // Each night's HRV and SpO₂, placed so Google Health files the night under the wake-up day: the readings
+            // from before midnight UTC line up just after it, the rest keep their times (HcPlanner.googleNight). Nothing
+            // lands after the night ends, so they're written in the same run as the night itself. Each kind is tracked
+            // on its own, and a night already written (v0.7.3 moved whole nights later) is never sent again.
+            val fingerprint = "${n.start}|${n.end}|"
             val hrvKey = "baseline-hrvnight-${n.start}"
             val spo2Key = "baseline-spo2night-${n.start}"
-            if (now < n.end + shift || (written[hrvKey] == fingerprint && written[spo2Key] == fingerprint)) continue
+            val hrvDone = written[hrvKey]?.startsWith(fingerprint) == true
+            val spo2Done = written[spo2Key]?.startsWith(fingerprint) == true
+            if (hrvDone && spo2Done) continue
             _status.update { it.copy(progress = "Lining up the night of ${Instant.ofEpochSecond(n.end).atZone(zone).toLocalDate()}…") }
             val s = repo.fetchSamples(n.start, n.end)
-            if (written[hrvKey] != fingerprint) {
-                val records = HcPlanner.googleHrv(n, HcPlanner.points(s.hrv, 1.0, 200.0), zone).mapNotNull { (orig, p) ->
+            fun place(pts: List<HcPlanner.Point>) = HcPlanner.googleNight(n, pts, zone).ifEmpty {
+                pts.filter { it.t >= n.start && it.t < n.end }.map { it.t to it }
+            }
+            if (!hrvDone) {
+                val records = place(HcPlanner.points(s.hrv, 1.0, 200.0)).mapNotNull { (orig, p) ->
                     build { HeartRateVariabilityRmssdRecord(at(p.t), off(p.t, zone), p.v, Metadata.autoRecorded(dev, HcPlanner.recordId("hrv", st.gen, orig), 1)) }
                 }
                 put(records)
                 count("HRV", records.size)
-                written[hrvKey] = fingerprint
+                written[hrvKey] = fingerprint + "lined"
             }
-            if (written[spo2Key] != fingerprint) {
-                val records = HcPlanner.googleHrv(n, HcPlanner.points(s.spo2, 50.0, 100.0), zone).mapNotNull { (orig, p) ->
+            if (!spo2Done) {
+                val records = place(HcPlanner.points(s.spo2, 50.0, 100.0)).mapNotNull { (orig, p) ->
                     build { OxygenSaturationRecord(at(p.t), off(p.t, zone), Percentage(p.v), Metadata.autoRecorded(dev, HcPlanner.recordId("spo2", st.gen, orig), 1)) }
                 }
                 put(records)
                 count("SpO₂", records.size)
-                written[spo2Key] = fingerprint
+                written[spo2Key] = fingerprint + "lined"
             }
         }
         val main = HcPlanner.mainNights(nights, zone)

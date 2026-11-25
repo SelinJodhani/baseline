@@ -209,6 +209,22 @@ class HcPlannerTest {
         assertEquals(java.time.LocalDate.parse("2026-11-24"), java.time.Instant.ofEpochSecond(moved.first().second.t).atZone(java.time.ZoneOffset.UTC).toLocalDate())
     }
 
+    @Test fun `a night's early readings line up just past midnight UTC, later ones keep their times`() {
+        val night = HcPlanner.Night(t("2026-11-25T01:05"), t("2026-11-25T09:06"), emptyList(), null)
+        val pts = listOf("2026-11-25T00:50", "2026-11-25T01:10", "2026-11-25T03:00", "2026-11-25T06:00", "2026-11-25T09:30")
+            .mapIndexed { i, s -> HcPlanner.Point(t(s), 70.0 + i) }
+        val placed = HcPlanner.googleNight(night, pts, ist)
+        // Only the three readings inside the night; the two before 5:45 IST line up at 5:45:00 and 5:45:01.
+        assertEquals(listOf(t("2026-11-25T05:45"), t("2026-11-25T05:45") + 1, t("2026-11-25T06:00")), placed.map { it.second.t })
+        assertEquals(listOf(71.0, 72.0, 73.0), placed.map { it.second.v })
+        assertEquals(t("2026-11-25T01:10"), placed.first().first)
+        // Everything is on the wake-up date in UTC and before the night ends.
+        assertTrue(placed.all { java.time.Instant.ofEpochSecond(it.second.t).atZone(java.time.ZoneOffset.UTC).toLocalDate() == LocalDate.parse("2026-11-25") && it.second.t < night.end })
+        // A night that starts after midnight UTC is left as it is.
+        val late = HcPlanner.Night(t("2026-11-25T06:00"), t("2026-11-25T12:00"), emptyList(), null)
+        assertEquals(listOf(t("2026-11-25T06:00"), t("2026-11-25T09:30")), HcPlanner.googleNight(late, pts, ist).map { it.second.t })
+    }
+
     @Test fun `zepp workout types map to Health Connect types`() {
         assertEquals(androidx.health.connect.client.records.ExerciseSessionRecord.EXERCISE_TYPE_RUNNING_TREADMILL, HealthConnectSync.exerciseType("treadmill"))
         assertEquals(androidx.health.connect.client.records.ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT, HealthConnectSync.exerciseType("unknown:15"))

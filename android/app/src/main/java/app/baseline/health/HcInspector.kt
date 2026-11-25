@@ -94,9 +94,9 @@ class HcInspector(private val context: Context) {
             days = days,
             rows = rows,
             others = HcCheck.otherWriters(rows, context.packageName),
-            lastNight = HcCheck.lastNight(nights, hrv, summary, zone) { n ->
-                if (googleHrv) HcPlanner.googleHrvShift(HcPlanner.Night(n.start, n.end, emptyList(), null), zone) else 0
-            },
+            // Since v0.7.5 a night's HRV stays inside the night even with the Google Health option (HcPlanner.googleNight),
+            // so the night is read as it is; [googleHrv] no longer changes the window.
+            lastNight = HcCheck.lastNight(nights, hrv, summary, zone),
             stepsToday = steps,
             zeppStepsToday = summary?.days?.firstOrNull { it.date == today.toString() }?.steps?.toLong(),
             readAt = now.epochSecond,

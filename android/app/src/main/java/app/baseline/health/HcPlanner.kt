@@ -211,8 +211,10 @@ object HcPlanner {
     // east of UTC who falls asleep after local midnight, every night therefore shows up a day early.
     //
     // With the option on, each settled night's readings (only those inside the night, so the average stays Zepp's
-    // sleep HRV) are moved later by one fixed amount, so the first lands just after 00:00 UTC on the wake-up date.
-    // Values, order and spacing are unchanged; only the clock times move.
+    // sleep HRV) are placed so the first lands just after 00:00 UTC on the wake-up date: since v0.7.5 only the readings
+    // before that moment move, lined up one second apart right after it (googleNight), so they can be written with the
+    // night itself. v0.7.3–0.7.4 moved the whole night later (googleHrv), which had to wait hours until those times
+    // had passed — after Google Health had already filed the night without them. Values are never changed.
 
     /** Just past the UTC day change, so the first reading is safely on the wake-up date. */
     const val GOOGLE_DAY_MARGIN_SEC = 15 * 60L
@@ -224,6 +226,23 @@ object HcPlanner {
     fun googleHrvShift(night: Night, zone: ZoneId): Long {
         val shift = googleDayStart(night, zone) - night.start
         return if (shift <= 0 || shift > GOOGLE_MAX_SHIFT_SEC) 0 else shift
+    }
+
+    /**
+     * The night's readings (inside it only) as (original time, placed point), with only the readings before
+     * [googleDayStart] moved: they're lined up one second apart from that moment, in order, and every later reading
+     * keeps its time. Values are untouched, so the night's average is Zepp's; and since nothing lands after the night
+     * ends, the readings can be written together with the night itself instead of hours later. Empty when the night
+     * ends too soon after midnight UTC to fit them (the caller then writes them as they are).
+     */
+    fun googleNight(night: Night, pts: List<Point>, zone: ZoneId): List<Pair<Long, Point>> {
+        val inside = pts.filter { it.t >= night.start && it.t < night.end }.sortedBy { it.t }
+        val anchor = googleDayStart(night, zone)
+        if (anchor <= night.start) return inside.map { it.t to it }
+        val early = inside.count { it.t < anchor }
+        if (anchor + early >= night.end) return emptyList()
+        var i = 0
+        return inside.map { p -> p.t to (if (p.t < anchor) Point(anchor + i++, p.v) else p) }
     }
 
     /** Just past 00:00 UTC on the night's wake-up date (local): the earliest time Google Health files under that date. */
