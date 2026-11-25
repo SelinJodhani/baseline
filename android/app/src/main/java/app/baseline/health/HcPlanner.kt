@@ -102,14 +102,25 @@ object HcPlanner {
             Vital(date, at, bpm)
         }
 
-    /** Zepp's breathing rate is a sleep average, so it is stamped mid-night and only for settled nights. */
-    fun breathing(summary: Summary, sinceDate: LocalDate, main: Map<LocalDate, Night>): List<Vital> =
+    /**
+     * Zepp's breathing rate is a sleep average, so it is stamped inside the night and only for settled nights: at
+     * mid-night, but no earlier than just past midnight UTC on the wake-up date (Google Health files it by its UTC
+     * date; 25 Nov 2026's mid-night was 5:05 am IST, still the 24th in UTC, so it showed up a day early).
+     */
+    fun breathing(summary: Summary, sinceDate: LocalDate, main: Map<LocalDate, Night>, zone: ZoneId): List<Vital> =
         summary.days.mapNotNull { d ->
             val date = runCatching { d.localDate }.getOrNull() ?: return@mapNotNull null
             val rate = d.respRate?.takeIf { it in 4.0..60.0 } ?: return@mapNotNull null
             val night = main[date] ?: return@mapNotNull null
-            if (date < sinceDate) null else Vital(date, (night.start + night.end) / 2, rate)
+            if (date < sinceDate) null else Vital(date, nightStamp(night, zone), rate)
         }
+
+    /** Where a one-value-per-night reading goes: mid-night, moved up to just past midnight UTC on the wake-up date if that's still inside the night. */
+    fun nightStamp(night: Night, zone: ZoneId): Long {
+        val mid = (night.start + night.end) / 2
+        val utc = googleDayStart(night, zone)
+        return if (utc > mid && utc < night.end) utc else mid
+    }
 
     fun workouts(summary: Summary, since: Long, now: Long): List<Session> = summary.workouts.mapNotNull { w ->
         val end = w.end ?: return@mapNotNull null
@@ -211,10 +222,14 @@ object HcPlanner {
 
     /** How far a night's HRV readings move for Google Health: 0 when the night already starts on its wake-up date in UTC. */
     fun googleHrvShift(night: Night, zone: ZoneId): Long {
-        val wake = Instant.ofEpochSecond(night.end).atZone(zone).toLocalDate()
-        val utcDay = wake.atStartOfDay(java.time.ZoneOffset.UTC).toEpochSecond()
-        val shift = utcDay + GOOGLE_DAY_MARGIN_SEC - night.start
+        val shift = googleDayStart(night, zone) - night.start
         return if (shift <= 0 || shift > GOOGLE_MAX_SHIFT_SEC) 0 else shift
+    }
+
+    /** Just past 00:00 UTC on the night's wake-up date (local): the earliest time Google Health files under that date. */
+    fun googleDayStart(night: Night, zone: ZoneId): Long {
+        val wake = Instant.ofEpochSecond(night.end).atZone(zone).toLocalDate()
+        return wake.atStartOfDay(java.time.ZoneOffset.UTC).toEpochSecond() + GOOGLE_DAY_MARGIN_SEC
     }
 
     /** Readings that fall in none of [nights] (daytime spot checks), which keep their real times. */

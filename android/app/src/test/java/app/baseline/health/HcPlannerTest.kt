@@ -94,12 +94,24 @@ class HcPlannerTest {
         val since = LocalDate.parse("2026-11-01")
         val noNight = HcPlanner.restingHr(s, since, emptyMap(), today, ist)
         assertEquals(listOf(HcPlanner.Vital(LocalDate.parse("2026-11-22"), t("2026-11-22T12:00"), 59.0)), noNight)
-        assertTrue(HcPlanner.breathing(s, since, emptyMap()).isEmpty())
+        assertTrue(HcPlanner.breathing(s, since, emptyMap(), ist).isEmpty())
 
         val night = HcPlanner.Night(t("2026-11-24T02:00"), t("2026-11-24T09:29"), emptyList(), 82)
         val main = HcPlanner.mainNights(listOf(night), ist)
         assertEquals(t("2026-11-24T09:29"), HcPlanner.restingHr(s, since, main, today, ist).last().at)
-        assertEquals((night.start + night.end) / 2, HcPlanner.breathing(s, since, main).single().at)
+        // Mid-night is 5:44:30 am IST, inside the 15-minute margin past midnight UTC: it goes to 5:45.
+        assertEquals(t("2026-11-24T05:45"), HcPlanner.breathing(s, since, main, ist).single().at)
+        // A night that starts after midnight UTC keeps its mid-night stamp.
+        val late = HcPlanner.Night(t("2026-11-24T06:00"), t("2026-11-24T12:00"), emptyList(), null)
+        assertEquals((late.start + late.end) / 2, HcPlanner.nightStamp(late, ist))
+    }
+
+    @Test fun `breathing rate of an early night moves to just past midnight UTC on the wake-up day`() {
+        // 25 Nov: 1:05–9:06 am IST; mid-night 5:05 am IST is still the 24th in UTC.
+        val night = HcPlanner.Night(t("2026-11-25T01:05"), t("2026-11-25T09:06"), emptyList(), null)
+        val at = HcPlanner.nightStamp(night, ist)
+        assertEquals(t("2026-11-25T05:45"), at)
+        assertEquals(LocalDate.parse("2026-11-25"), java.time.Instant.ofEpochSecond(at).atZone(java.time.ZoneOffset.UTC).toLocalDate())
     }
 
     @Test fun `workouts need an end, weights a plausible value`() {

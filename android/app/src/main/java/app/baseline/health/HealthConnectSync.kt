@@ -93,8 +93,9 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
         /** Daily totals written so far, by local date. */
         val days: Map<String, HcPlanner.DayProgress> = emptyMap(),
         /**
-         * 3 = fresh ids per rewrite, and heart-rate holes refilled. 2 = add-only records. 0/1 = v0.6.0–0.6.1, which
-         * rewrote today's totals and the current hour's heart rate.
+         * 5 = breathing rate stamped past midnight UTC on the wake-up date. 4 = SpO₂ follows the Google Health option,
+         * HRV and SpO₂ rewritten once. 3 = fresh ids per rewrite, and heart-rate holes refilled. 2 = add-only records.
+         * 0/1 = v0.6.0–0.6.1, which rewrote today's totals and the current hour's heart rate.
          */
         val scheme: Int = 0,
         /** Bumped by every delete-and-rewrite; readings and daily totals carry it in their ids (HcPlanner.recordId). */
@@ -184,7 +185,14 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
         if (modeChanged || st.scheme < 4) {
             _status.update { it.copy(progress = "Rewriting SpO₂…") }
             client.deleteRecords(OxygenSaturationRecord::class, everything)
-            st = st.copy(spo2Until = 0, gen = st.gen + 1, written = st.written.filterKeys { !it.startsWith("baseline-spo2night-") }, scheme = 4)
+            st = st.copy(spo2Until = 0, gen = st.gen + 1, written = st.written.filterKeys { !it.startsWith("baseline-spo2night-") }, scheme = maxOf(st.scheme, 4))
+            save(st)
+        }
+        // 0d. Breathing rate is re-stamped past midnight UTC on the wake-up date (v0.7.4, HcPlanner.nightStamp): delete
+        //     Baseline's breathing records once and write them again under new ids.
+        if (st.scheme < 5) {
+            client.deleteRecords(RespiratoryRateRecord::class, everything)
+            st = st.copy(gen = st.gen + 1, written = st.written.filterKeys { !it.startsWith("baseline-breathing-") }, scheme = 5)
             save(st)
         }
 
@@ -347,8 +355,8 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
             val id = "baseline-rhr-${v.date}"
             add(id, "${v.at}|${v.value}", build { RestingHeartRateRecord(at(v.at), off(v.at, zone), v.value.toLong(), Metadata.autoRecorded(dev, id, version)) })
         }
-        for (v in HcPlanner.breathing(summary, sinceDate, main)) {
-            val id = "baseline-breathing-${v.date}"
+        for (v in HcPlanner.breathing(summary, sinceDate, main, zone)) {
+            val id = HcPlanner.recordId("breathing", st.gen, v.date)
             add(id, "${v.at}|${v.value}", build { RespiratoryRateRecord(at(v.at), off(v.at, zone), v.value, Metadata.autoRecorded(dev, id, version)) })
         }
         for (w in HcPlanner.workouts(summary, historyStart, now)) {
@@ -376,7 +384,7 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
                 val range = TimeRangeFilter.between(Instant.EPOCH, Instant.now().plusSeconds(86_400))
                 for (type in TYPES) client.deleteRecords(type, range)
                 // Start over, but never reuse an id: copies written later must look new to apps that sync.
-                save(State(scheme = 3, gen = load().gen + 1))
+                save(State(scheme = 5, gen = load().gen + 1))
             }
         }
         _status.value = Status()
