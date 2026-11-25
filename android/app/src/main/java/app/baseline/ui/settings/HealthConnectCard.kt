@@ -22,6 +22,18 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.MonitorHeart
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -79,88 +91,80 @@ fun HealthConnectCard(vm: AppViewModel, s: AppSettings, bridgeHasSamples: Boolea
     }
     val on = s.healthConnect && granted == true
 
-    SectionCard {
+    val cs = MaterialTheme.colorScheme
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
             "Copy Zepp's readings into Health Connect exactly as Zepp recorded them, so Google Health shows the same numbers.",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
         )
-        when {
-            !available -> {
-                Spacer(Modifier.height(8.dp))
-                Text("Health Connect isn't available on this phone.", style = MaterialTheme.typography.bodyMedium)
-                return@SectionCard
-            }
-            s.demo -> {
-                Spacer(Modifier.height(8.dp))
-                Text("Connect your bridge first. Demo data is never written.", style = MaterialTheme.typography.bodyMedium)
-                return@SectionCard
-            }
-            !bridgeHasSamples -> {
-                Spacer(Modifier.height(8.dp))
-                Text("Your bridge is too old for this. Update it to 0.6 or later.", style = MaterialTheme.typography.bodyMedium)
-                return@SectionCard
-            }
+        val blocked = when {
+            !available -> "Health Connect isn't available on this phone."
+            s.demo -> "Connect your bridge first. Demo data is never written."
+            !bridgeHasSamples -> "Your bridge is too old for this. Update it to 0.6 or later."
+            else -> null
         }
-        SettingRow(
-            "Write Zepp data to Health Connect",
-            "Heart rate, HRV, SpO₂, sleep with stages, resting heart rate, breathing rate, steps, distance, active calories, workouts and weight. A night is written once it's complete.",
-        ) {
-            Switch(checked = on, onCheckedChange = { want ->
+        if (blocked != null) {
+            SettingsGroup { RowShell(Icons.Rounded.Info, blocked, null, null, summaryLines = 2) {} }
+            return@Column
+        }
+        SettingsGroup {
+            ToggleRow(Icons.Rounded.MonitorHeart, "Copy Zepp data", "Heart rate, HRV, sleep, steps, workouts and more", on) { want ->
                 if (want) ask.launch(HealthConnectSync.PERMISSIONS) else vm.update { it.copy(healthConnect = false) }
-            })
+            }
+            if (on) {
+                val failed = status.lastError != null && !status.running
+                RowShell(
+                    when { status.running -> Icons.Rounded.Sync; failed -> Icons.Rounded.ErrorOutline; else -> Icons.Rounded.CheckCircle },
+                    statusTitle(status), statusDetail(status), null, summaryLines = 3,
+                    iconTint = if (failed) cs.error else cs.onSurfaceVariant,
+                ) { if (status.running) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) }
+            }
         }
-        note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = cs.error, modifier = Modifier.padding(horizontal = 8.dp)) }
 
         if (on) {
-            Text(statusLine(status), style = MaterialTheme.typography.bodySmall,
-                color = if (status.lastError != null && !status.running) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-            SettingRow(
-                "Date HRV and SpO₂ the way Google Health reads them",
-                "Moves each finished night's HRV and SpO₂ a few hours later, just past midnight UTC, so Google Health files them under the day you woke up. The values stay Zepp's.",
-            ) {
-                Switch(checked = s.healthConnectGoogleHrv, onCheckedChange = { c ->
+            GroupLabel("Options")
+            SettingsGroup {
+                ToggleRow(
+                    Icons.Rounded.Schedule, "Date HRV and SpO₂ for Google Health", "Files each night under the day you woke up",
+                    s.healthConnectGoogleHrv, enabled = !status.running,
+                ) { c ->
                     vm.update { it.copy(healthConnectGoogleHrv = c) }
                     scope.launch { kotlinx.coroutines.delay(300); sync.run() }
-                }, enabled = !status.running)
-            }
-            Spacer(Modifier.height(4.dp))
-            Text("How far back", style = MaterialTheme.typography.bodyMedium)
-            Spacer(Modifier.height(6.dp))
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                HISTORY.forEachIndexed { i, (days, label) ->
-                    SegmentedButton(
-                        selected = s.healthConnectDays == days,
-                        onClick = {
-                            if (s.healthConnectDays != days) {
-                                vm.update { it.copy(healthConnectDays = days) }
-                                if (days > s.healthConnectDays) scope.launch { sync.recopy() }
-                            }
-                        },
-                        shape = SegmentedButtonDefaults.itemShape(i, HISTORY.size),
-                    ) { Text(label) }
+                }
+                ChoiceRow(Icons.Rounded.History, "Copy history from the last", HISTORY, s.healthConnectDays) { days ->
+                    if (s.healthConnectDays != days) {
+                        vm.update { it.copy(healthConnectDays = days) }
+                        if (days > s.healthConnectDays) scope.launch { sync.recopy() }
+                    }
                 }
             }
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                FilledTonalButton(onClick = { scope.launch { sync.run() } }, enabled = !status.running) { Text("Write now") }
-                OutlinedButton(onClick = { confirmRemove = true }, enabled = !status.running) { Text("Remove Baseline's data") }
+            GroupLabel("Actions")
+            SettingsGroup {
+                NavRow(Icons.Rounded.Sync, "Write now", "Copy anything new right away") { if (!status.running) scope.launch { sync.run() } }
+                NavRow(Icons.Rounded.Search, "What's in Health Connect", "Check what Google Health will read") { onCheck() }
+                RowShell(
+                    Icons.Rounded.DeleteOutline, "Remove Baseline's data", "Deletes what Baseline wrote and turns copying off",
+                    { if (!status.running) confirmRemove = true }, iconTint = cs.error, titleColor = cs.error,
+                ) {}
             }
-            TextButton(onClick = onCheck) { Text("What's in Health Connect") }
         }
 
         if (zeppWrites.isNotEmpty()) {
-            Spacer(Modifier.height(14.dp))
-            Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
-                Column(Modifier.padding(14.dp)) {
-                    Text("The Zepp app writes here too", style = MaterialTheme.typography.titleSmall)
-                    Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(4.dp))
+            Surface(color = cs.secondaryContainer, shape = MaterialTheme.shapes.large) {
+                Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
+                    Text("The Zepp app writes here too", style = MaterialTheme.typography.titleMedium, color = cs.onSecondaryContainer)
+                    Spacer(Modifier.height(6.dp))
                     Text(
                         "Zepp still writes ${zeppWrites.size} kinds of data, including half-finished nights at about 5 am that Google Health keeps. " +
-                            "So Baseline is the only source: 1) turn off all of Zepp's access, 2) in Health Connect, delete Zepp's data.",
-                        style = MaterialTheme.typography.bodySmall,
+                            "To keep Baseline the only source, turn off Zepp's access, then delete Zepp's data in Health Connect.",
+                        style = MaterialTheme.typography.bodyMedium, color = cs.onSecondaryContainer,
                     )
-                    Row {
-                        TextButton(onClick = { ctx.startActivity(HealthConnectSync.manageIntent(ctx, HealthConnectSync.ZEPP)) }) { Text("Zepp's access") }
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(onClick = { ctx.startActivity(HealthConnectSync.manageIntent(ctx, HealthConnectSync.ZEPP)) }) { Text("Zepp's access") }
                         TextButton(onClick = { ctx.startActivity(HealthConnectSync.manageIntent(ctx, null)) }) { Text("Open Health Connect") }
                     }
                 }
@@ -185,14 +189,20 @@ fun HealthConnectCard(vm: AppViewModel, s: AppSettings, bridgeHasSamples: Boolea
     }
 }
 
-private fun statusLine(st: HealthConnectSync.Status): String = when {
+private fun statusTitle(st: HealthConnectSync.Status): String = when {
     st.running -> st.progress ?: "Writing…"
-    st.lastError != null -> "Last attempt failed: ${st.lastError}"
-    st.lastRunAt == null -> "Not written yet."
-    else -> buildString {
-        append("Last written ${Fmt.ago(st.lastRunAt)}")
+    st.lastError != null -> "Last attempt failed"
+    st.lastRunAt == null -> "Not written yet"
+    else -> "Last written ${Fmt.ago(st.lastRunAt)}"
+}
+
+private fun statusDetail(st: HealthConnectSync.Status): String? = when {
+    st.running -> null
+    st.lastError != null -> st.lastError
+    st.lastRunAt == null -> null
+    else -> buildList {
         val parts = st.written.entries.joinToString(", ") { (k, v) -> "%,d %s".format(v, if (v == 1) k.removeSuffix("s") else k) }
-        append(if (parts.isBlank()) " · nothing new" else " · $parts")
-        st.copiedUntil?.let { append(" · readings up to ${Fmt.ago(it)}") }
-    }
+        add(if (parts.isBlank()) "Nothing new" else parts.replaceFirstChar { it.uppercase() })
+        st.copiedUntil?.let { add("readings up to ${Fmt.ago(it)}") }
+    }.joinToString(" · ")
 }

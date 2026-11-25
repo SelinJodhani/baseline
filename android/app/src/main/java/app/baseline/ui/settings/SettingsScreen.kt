@@ -4,6 +4,7 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Wallpaper
@@ -327,23 +328,28 @@ private fun SettingsPage(title: String, onBack: () -> Unit, content: androidx.co
 
 /** One card holding a group of rows, with hairlines between them. */
 @Composable
-private fun SettingsGroup(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+internal fun SettingsGroup(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.padding(vertical = 6.dp), content = content)
     }
 }
 
 @Composable
-private fun RowShell(icon: ImageVector, title: String, summary: String?, onClick: (() -> Unit)?, trailing: @Composable () -> Unit) {
+internal fun RowShell(
+    icon: ImageVector, title: String, summary: String?, onClick: (() -> Unit)?,
+    summaryLines: Int = 1, iconTint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    titleColor: androidx.compose.ui.graphics.Color = androidx.compose.ui.graphics.Color.Unspecified,
+    trailing: @Composable () -> Unit,
+) {
     Row(
         Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = 20.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+        Icon(icon, null, tint = iconTint, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(18.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
-            summary?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = titleColor)
+            summary?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = summaryLines, overflow = TextOverflow.Ellipsis) }
         }
         Spacer(Modifier.width(12.dp))
         trailing()
@@ -351,12 +357,26 @@ private fun RowShell(icon: ImageVector, title: String, summary: String?, onClick
 }
 
 @Composable
-private fun NavRow(icon: ImageVector, title: String, summary: String?, onClick: () -> Unit) =
+internal fun NavRow(icon: ImageVector, title: String, summary: String?, onClick: () -> Unit) =
     RowShell(icon, title, summary, onClick) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
 
 @Composable
-private fun ToggleRow(icon: ImageVector, title: String, summary: String?, checked: Boolean, onChange: (Boolean) -> Unit) =
-    RowShell(icon, title, summary, { onChange(!checked) }) { Switch(checked = checked, onCheckedChange = onChange) }
+internal fun ToggleRow(icon: ImageVector, title: String, summary: String?, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) =
+    RowShell(icon, title, summary, if (enabled) ({ onChange(!checked) }) else null, summaryLines = 2) { Switch(checked = checked, onCheckedChange = onChange, enabled = enabled) }
+
+/** A row that picks one of a few options from a small menu. */
+@Composable
+internal fun <T> ChoiceRow(icon: ImageVector, title: String, options: List<Pair<T, String>>, selected: T, onPick: (T) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        RowShell(icon, title, options.firstOrNull { it.first == selected }?.second, { open = true }) {
+            Icon(Icons.Rounded.ArrowDropDown, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, offset = androidx.compose.ui.unit.DpOffset(60.dp, 0.dp)) {
+            options.forEach { (k, l) -> DropdownMenuItem(text = { Text(l) }, onClick = { onPick(k); open = false }) }
+        }
+    }
+}
 
 @Composable
 private fun ThemeRow(current: String, onPick: (String) -> Unit) {
