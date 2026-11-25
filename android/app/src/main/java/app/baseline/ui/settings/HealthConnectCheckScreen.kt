@@ -81,14 +81,15 @@ fun HealthConnectCheckScreen(vm: AppViewModel, onBack: () -> Unit) {
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         LazyColumn(
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top, bottom = bottom + 24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(start = app.baseline.ui.common.Space.page, end = app.baseline.ui.common.Space.page, top = top + 8.dp, bottom = bottom + 32.dp),
+            verticalArrangement = Arrangement.spacedBy(app.baseline.ui.common.Space.gap),
         ) {
             item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
-                    Text("In Health Connect", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
-                    if (canRead == true) IconButton(onClick = { reload++ }, enabled = report != null || error != null) { Icon(Icons.Rounded.Refresh, "Check again") }
+                Box {
+                    app.baseline.ui.common.PageHeader("In Health Connect", onBack)
+                    if (canRead == true) IconButton(onClick = { reload++ }, enabled = report != null || error != null, modifier = Modifier.align(Alignment.TopEnd)) {
+                        Icon(Icons.Rounded.Refresh, "Check again")
+                    }
                 }
             }
             when {

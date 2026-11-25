@@ -63,14 +63,11 @@ fun OverlayPage(title: String, subtitle: String?, onBack: () -> Unit, content: L
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
       Box(Modifier.fillMaxSize()) { // Surface would stretch the status-bar scrim over the whole page
         LazyColumn(
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top + 4.dp, bottom = bottom + 32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(start = app.baseline.ui.common.Space.page, end = app.baseline.ui.common.Space.page, top = top + 8.dp, bottom = bottom + 32.dp),
+            verticalArrangement = Arrangement.spacedBy(app.baseline.ui.common.Space.gap),
         ) {
             item {
-                FilledTonalIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
-                Spacer(Modifier.height(16.dp))
-                Text(title, style = MaterialTheme.typography.headlineLarge)
-                if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                app.baseline.ui.common.PageHeader(title, onBack, subtitle)
             }
             content()
         }
@@ -92,9 +89,7 @@ fun RangeChip(flag: LabFlag, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun SectionLabel(text: String) {
-    Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
-}
+fun SectionLabel(text: String) = app.baseline.ui.common.SectionLabel(text)
 
 @Composable
 fun Disclaimer(text: String) {

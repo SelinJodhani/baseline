@@ -86,8 +86,8 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit, onOpenSettings: ()
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
       Box(Modifier.fillMaxSize()) { // Surface would stretch the status-bar scrim over the whole page
         LazyColumn(
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top + 4.dp, bottom = bottom + 32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(start = app.baseline.ui.common.Space.page, end = app.baseline.ui.common.Space.page, top = top + 8.dp, bottom = bottom + 32.dp),
+            verticalArrangement = Arrangement.spacedBy(app.baseline.ui.common.Space.gap),
         ) {
             item {
                 FilledTonalIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }

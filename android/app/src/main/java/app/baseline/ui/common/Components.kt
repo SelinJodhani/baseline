@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material3.Card
@@ -52,11 +53,11 @@ fun SectionCard(
     val shape = MaterialTheme.shapes.large
     if (onClick != null) {
         Card(onClick = onClick, modifier = modifier.fillMaxWidth(), shape = shape, colors = colors) {
-            Column(Modifier.padding(20.dp), content = content)
+            Column(Modifier.padding(Space.card), content = content)
         }
     } else {
         Card(modifier = modifier.fillMaxWidth(), shape = shape, colors = colors) {
-            Column(Modifier.padding(20.dp), content = content)
+            Column(Modifier.padding(Space.card), content = content)
         }
     }
 }
@@ -189,5 +190,34 @@ fun LegendItem(color: Color, label: String) {
         Box(Modifier.size(10.dp).clip(RoundedCornerShape(3.dp)).background(color))
         Spacer(Modifier.width(6.dp))
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** One spacing system for every screen: page margins, gaps between cards, padding inside cards. */
+object Space {
+    val page = 16.dp
+    val gap = 12.dp
+    val card = 20.dp
+}
+
+/** A small label above a group of cards or rows (same everywhere: Body, Settings, Healthspan, Labs). */
+@Composable
+fun SectionLabel(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.padding(start = 8.dp, top = 8.dp),
+    )
+}
+
+/** The header of every inner page: a round back button, then the title (and an optional line) below it. */
+@Composable
+fun PageHeader(title: String, onBack: () -> Unit, subtitle: String? = null) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+        androidx.compose.material3.FilledTonalIconButton(onClick = onBack) {
+            Icon(androidx.compose.material.icons.Icons.AutoMirrored.Rounded.ArrowBack, "Back")
+        }
+        Spacer(Modifier.height(16.dp))
+        Text(title, style = MaterialTheme.typography.headlineLarge, modifier = Modifier.padding(horizontal = 4.dp))
+        if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
     }
 }

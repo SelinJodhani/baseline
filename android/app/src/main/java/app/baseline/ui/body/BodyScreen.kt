@@ -58,7 +58,7 @@ fun BodyScreen(m: Model, onRefresh: () -> Unit, onMetric: (Metric) -> Unit, onLa
             val shown = metrics.filter { it in available }
             if (shown.isEmpty()) return@forEach
             item {
-                Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp, top = 6.dp))
+                app.baseline.ui.common.SectionLabel(title)
                 Spacer(Modifier.height(8.dp))
                 Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
                     Column {

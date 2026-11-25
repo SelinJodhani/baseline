@@ -42,8 +42,8 @@ fun RefreshablePage(refreshing: Boolean, onRefresh: () -> Unit, content: LazyLis
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     PullToRefreshBox(isRefreshing = refreshing, onRefresh = onRefresh, modifier = Modifier.fillMaxSize()) {
         LazyColumn(
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top + 8.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(start = Space.page, end = Space.page, top = top + 8.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(Space.gap),
             modifier = Modifier.fillMaxSize(),
             content = content,
         )

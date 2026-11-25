@@ -268,7 +268,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
             item { GroupLabel("Today") }
             item {
                 SettingsGroup {
-                    NavRow(Icons.Rounded.Flag, "Goals", "${Fmt.duration(s.sleepNeedMin)} sleep · ${"%,d".format(s.stepGoal)} steps · ${s.weeklyActiveGoal} active min") { page = "goals" }
+                    NavRow(Icons.Rounded.Flag, "Goals", "${Fmt.duration(s.sleepNeedMin).removeSuffix(" 00m")} sleep · ${"%,d".format(s.stepGoal)} steps · ${s.weeklyActiveGoal} min a week") { page = "goals" }
                     ToggleRow(Icons.Rounded.SelfImprovement, "Calm mode", "Words instead of numbers on Today", s.calmMode) { c -> vm.update { it.copy(calmMode = c) } }
                     ToggleRow(Icons.Rounded.Bedtime, "Hold sleep until noon", "Sleep details wait for the afternoon", s.holdSleepScoreUntilAfternoon) { c -> vm.update { it.copy(holdSleepScoreUntilAfternoon = c) } }
                 }
@@ -311,15 +311,10 @@ private fun SettingsPage(title: String, onBack: () -> Unit, content: androidx.co
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         LazyColumn(
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top, bottom = bottom + 24.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(start = app.baseline.ui.common.Space.page, end = app.baseline.ui.common.Space.page, top = top + 8.dp, bottom = bottom + 32.dp),
+            verticalArrangement = Arrangement.spacedBy(app.baseline.ui.common.Space.gap),
         ) {
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
-                    Text(title, style = MaterialTheme.typography.headlineMedium)
-                }
-            }
+            item { app.baseline.ui.common.PageHeader(title, onBack) }
             content()
         }
         StatusBarScrim()
@@ -358,7 +353,7 @@ internal fun RowShell(
 
 @Composable
 internal fun NavRow(icon: ImageVector, title: String, summary: String?, onClick: () -> Unit) =
-    RowShell(icon, title, summary, onClick) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+    RowShell(icon, title, summary, onClick, summaryLines = 2) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
 
 @Composable
 internal fun ToggleRow(icon: ImageVector, title: String, summary: String?, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) =
@@ -420,12 +415,7 @@ private fun Link(text: String, onClick: () -> Unit) {
 
 /** A small section label above a settings card. */
 @Composable
-internal fun GroupLabel(text: String) {
-    Text(
-        text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 8.dp, top = 12.dp),
-    )
-}
+internal fun GroupLabel(text: String) = app.baseline.ui.common.SectionLabel(text)
 
 /** One setting: title and an optional line, full width, with a trailing control. No list-item inset. */
 @Composable

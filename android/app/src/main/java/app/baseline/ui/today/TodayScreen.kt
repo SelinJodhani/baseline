@@ -75,6 +75,7 @@ import app.baseline.ui.charts.Gauge
 import app.baseline.ui.charts.Ring
 import app.baseline.ui.charts.StackBar
 import app.baseline.ui.common.Fmt
+import app.baseline.ui.common.Space
 import app.baseline.ui.common.RefreshablePage
 import app.baseline.ui.story.Metric
 import app.baseline.ui.story.now
@@ -122,19 +123,19 @@ fun TodayScreen(
     val mode = m.insights.mode
     RefreshablePage(m.data.refreshing || m.data.syncing, onRefresh) {
         item { Header(m, onSettings, onTakeItEasy = { showModes = true }, back = 0, oldest = oldest, onDay = { back = it }) }
+        item { app.baseline.update.UpdateBanner() }
+        if (mode != null) item { ModeBanner(mode, m, onOff = { vm.setMode(null) }) }
+        item { Hero(m, onWhy = { showWhy = true }, onFeel = { vm.setFeel(it) }, onTakeItEasy = { showModes = true }) }
         if (fresh.showCard) item {
             FreshnessCard(m, fresh, onSync, onOpenZepp, onDismiss = {
                 m.data.summary?.freshness?.lastReadingAt?.let { t -> vm.update { it.copy(syncCardDismissedFor = t) } }
             })
         }
-        item { app.baseline.update.UpdateBanner() }
-        if (mode != null) item { ModeBanner(mode, m, onOff = { vm.setMode(null) }) }
-        item { Hero(m, onWhy = { showWhy = true }, onFeel = { vm.setFeel(it) }, onTakeItEasy = { showModes = true }) }
         if (m.settings.aiEnabled && m.settings.geminiKey.isNotBlank() && m.settings.briefOnToday && m.settings.briefHiddenOn != m.insights.today.toString()) item {
             BriefCard(m, onHide = { vm.update { it.copy(briefHiddenOn = m.insights.today.toString()) } })
         }
         item {
-            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(Space.gap)) {
                 SleepTile(m, Modifier.weight(1f).fillMaxHeight()) { onTab(1) }
                 MoveTile(m, Modifier.weight(1f).fillMaxHeight()) { onTab(3) }
             }
@@ -154,7 +155,7 @@ private fun PastDay(m: Model, back: Int, oldest: Int, onDay: (Int) -> Unit, onSe
         item { Header(m, onSettings, onTakeItEasy = {}, back = back, oldest = oldest, onDay = onDay) }
         item { Hero(m, onWhy = { showWhy = true }, onFeel = {}, onTakeItEasy = {}, past = true) }
         item {
-            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(Space.gap)) {
                 SleepTile(m, Modifier.weight(1f).fillMaxHeight(), past = true) { onTab(1) }
                 MoveTile(m, Modifier.weight(1f).fillMaxHeight(), past = true) { onTab(3) }
             }
@@ -222,9 +223,9 @@ private fun Hero(m: Model, onWhy: () -> Unit, onFeel: (Feel?) -> Unit, onTakeItE
     val shown = r.score ?: r.zeppScore
     val counted by animateIntAsState(shown ?: 0, tween(1100), label = "score")
     val chip = readinessChip(m)
-    Surface(shape = RoundedCornerShape(32.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Box(Modifier.background(tint.copy(alpha = .10f))) {
-            Column(Modifier.padding(24.dp)) {
+            Column(Modifier.padding(Space.card)) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable(onClick = onWhy)) {
                     if (numbers) {
                         Gauge(shown?.let { it / 100f }, listOf(tint), Modifier.size(132.dp), stroke = 12.dp) {
@@ -245,7 +246,11 @@ private fun Hero(m: Model, onWhy: () -> Unit, onFeel: (Feel?) -> Unit, onTakeItE
                     Spacer(Modifier.width(20.dp))
                     Column(Modifier.weight(1f)) {
                         if (numbers) {
-                            Text(r.headline, style = MaterialTheme.typography.headlineMedium, color = if (r.level == Level.Unknown) MaterialTheme.colorScheme.onSurface else tint)
+                            Text(
+                                r.headline,
+                                style = if (r.verb == null) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
+                                color = if (r.level == Level.Unknown) MaterialTheme.colorScheme.onSurface else tint,
+                            )
                         }
                         chip?.let { QuietChip(it, Modifier.padding(top = 4.dp)) }
                         FeelAgreement(m)
@@ -329,7 +334,7 @@ private fun BriefCard(m: Model, onHide: () -> Unit) {
 @Composable
 private fun Tile(modifier: Modifier, onClick: () -> Unit, content: @Composable () -> Unit) {
     Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = modifier.clip(RoundedCornerShape(28.dp)).clickable(onClick = onClick)) {
-        Column(Modifier.padding(18.dp)) { content() }
+        Column(Modifier.padding(Space.card)) { content() }
     }
 }
 

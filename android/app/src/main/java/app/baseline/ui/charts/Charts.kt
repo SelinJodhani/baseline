@@ -146,15 +146,12 @@ fun Sparkline(
         val inset = 6.dp.toPx()
         fun x(i: Int) = if (values.size == 1) inset else inset + i / (values.size - 1f) * (size.width - 2 * inset)
         fun y(v: Double) = (size.height - ((v - lo) / (hi - lo) * size.height)).toFloat()
-        band?.let { drawRoundRect(color.copy(alpha = .10f), Offset(0f, y(it.endInclusive)), Size(size.width, y(it.start) - y(it.endInclusive)), CornerRadius(6f)) }
         clipReveal(p) {
             runs(values).forEach { run ->
                 val pts = run.map { Offset(x(it.first), y(it.second)) }
                 if (pts.size == 1) drawCircle(color, 3.dp.toPx(), pts[0]) else {
-                    val path = smoothPath(pts)
-                    val fill = Path().apply { addPath(path); lineTo(pts.last().x, size.height); lineTo(pts.first().x, size.height); close() }
-                    drawPath(fill, color.copy(alpha = .10f))
-                    drawPath(path, color, style = Stroke(2.2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                    // Just the line: in a list, a fill under it reads as a grey box.
+                    drawPath(smoothPath(pts), color, style = Stroke(2.2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
                 }
             }
             runs(values).lastOrNull()?.lastOrNull()?.let {
