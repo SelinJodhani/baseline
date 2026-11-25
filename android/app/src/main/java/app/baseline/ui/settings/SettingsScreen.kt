@@ -1,6 +1,26 @@
 package app.baseline.ui.settings
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.Wallpaper
+import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.MonitorHeart
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.SelfImprovement
+import androidx.compose.material.icons.rounded.SystemUpdate
+import androidx.compose.material.icons.rounded.Widgets
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -64,6 +84,7 @@ import kotlin.math.roundToInt
 private const val REPO_URL = "https://github.com/SelinJodhani/baseline"
 private const val METRICS_URL = "https://github.com/SelinJodhani/baseline/blob/main/docs/METRICS.md"
 
+/** Settings: one short list; anything with more than a switch opens its own page. */
 @Composable
 fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) {
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -71,27 +92,17 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
     val s = settings ?: return
     val ctx = LocalContext.current
     var confirmSignOut by remember { mutableStateOf(false) }
-    var showHcCheck by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var showHcCheck by rememberSaveable { mutableStateOf(false) }
+    var page by rememberSaveable { mutableStateOf<String?>(null) }
+    BackHandler(enabled = page != null && !showHcCheck) { page = null }
     if (showHcCheck) {
         HealthConnectCheckScreen(vm, onBack = { showHcCheck = false })
         return
     }
     fun open(url: String) = ctx.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
-    val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-        LazyColumn(
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top, bottom = bottom + 24.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
-                    Text("Settings", style = MaterialTheme.typography.headlineMedium)
-                }
-            }
-            item { GroupLabel("Data source") }
+    when (page) {
+        "bridge" -> SettingsPage("Bridge", onBack = { page = null }) {
             item {
                 SectionCard {
                     Spacer(Modifier.height(8.dp))
@@ -111,9 +122,11 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                     }
                 }
             }
-            item { GroupLabel("Health Connect") }
+        }
+        "hc" -> SettingsPage("Health Connect", onBack = { page = null }) {
             item { HealthConnectCard(vm, s, bridgeHasSamples = data.summary?.capabilities?.samples == true, onCheck = { showHcCheck = true }) }
-            item { GroupLabel("Your targets") }
+        }
+        "goals" -> SettingsPage("Goals", onBack = { page = null }) {
             item {
                 SectionCard {
                     Spacer(Modifier.height(4.dp))
@@ -124,56 +137,8 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                     SliderSetting("Weekly active minutes", "${s.weeklyActiveGoal} min", s.weeklyActiveGoal.toFloat(), 75f..450f, 15) { v -> vm.update { it.copy(weeklyActiveGoal = v) } }
                 }
             }
-            item { GroupLabel("Today") }
-            item {
-                SectionCard {
-                    Text("For days when numbers feel like too much.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    SettingRow("Calm mode", "Today shows words instead of numbers. Detail pages keep their numbers.") { Switch(checked = s.calmMode, onCheckedChange = { c -> vm.update { it.copy(calmMode = c) } }) }
-                    SettingRow("Hold sleep until noon", "Keep last night's sleep details off Today until the afternoon, so the morning starts with how you feel.") { Switch(checked = s.holdSleepScoreUntilAfternoon, onCheckedChange = { c -> vm.update { it.copy(holdSleepScoreUntilAfternoon = c) } }) }
-                }
-            }
-            item { GroupLabel("Widgets") }
-            item {
-                SectionCard {
-                    Text("Glanceable health on your home screen — and on the lock screen where your phone supports it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(12.dp))
-                    val widgets = listOf(
-                        "Today" to app.baseline.widget.TodayWidgetReceiver::class.java,
-                        "Today strip" to app.baseline.widget.TodayPillWidgetReceiver::class.java,
-                        "Readiness" to app.baseline.widget.ReadinessWidgetReceiver::class.java,
-                        "Sleep" to app.baseline.widget.SleepWidgetReceiver::class.java,
-                        "Move" to app.baseline.widget.MoveWidgetReceiver::class.java,
-                        "Body signals" to app.baseline.widget.SignalsWidgetReceiver::class.java,
-                    )
-                    val mgr = android.appwidget.AppWidgetManager.getInstance(ctx)
-                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        widgets.forEach { (label, cls) ->
-                            androidx.compose.material3.AssistChip(
-                                onClick = { mgr.requestPinAppWidget(android.content.ComponentName(ctx, cls), null, null) },
-                                label = { Text("Add $label") },
-                                leadingIcon = { Icon(androidx.compose.material.icons.Icons.Rounded.Add, null) },
-                                enabled = mgr.isRequestPinAppWidgetSupported,
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text("Lock screen: on Android 16+ phones and tablets that support it, long-press the lock screen (or open the hub) and add a Baseline widget.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            item { GroupLabel("Appearance") }
-            item {
-                SectionCard {
-                    Spacer(Modifier.height(12.dp))
-                    val modes = listOf("system" to "System", "light" to "Light", "dark" to "Dark")
-                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                        modes.forEachIndexed { i, (k, l) ->
-                            SegmentedButton(selected = s.theme == k, onClick = { vm.update { it.copy(theme = k) } }, shape = SegmentedButtonDefaults.itemShape(i, modes.size)) { Text(l) }
-                        }
-                    }
-                    SettingRow("Wallpaper colours", "Material You on Android 12+") { Switch(checked = s.dynamicColor, onCheckedChange = { c -> vm.update { it.copy(dynamicColor = c) } }) }
-                }
-            }
-            item { GroupLabel("AI") }
+        }
+        "ai" -> SettingsPage("AI", onBack = { page = null }) {
             item {
                 var key by remember(s.geminiKey) { mutableStateOf(s.geminiKey) }
                 var model by remember(s.geminiModel) { mutableStateOf(s.geminiModel) }
@@ -214,7 +179,8 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                     )
                 }
             }
-            item { GroupLabel("About you") }
+        }
+        "you" -> SettingsPage("About you", onBack = { page = null }) {
             item {
                 // About you (optional): birth year + sex for age-based step goals and VO₂max percentiles. Stays on the device.
                 var year by remember(s.birthYear) { mutableStateOf(s.birthYear?.toString() ?: "") }
@@ -240,8 +206,40 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                     }
                 }
             }
+        }
+        "widgets" -> SettingsPage("Widgets", onBack = { page = null }) {
+            item {
+                SectionCard {
+                    Text("Glanceable health on your home screen — and on the lock screen where your phone supports it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(12.dp))
+                    val widgets = listOf(
+                        "Today" to app.baseline.widget.TodayWidgetReceiver::class.java,
+                        "Today strip" to app.baseline.widget.TodayPillWidgetReceiver::class.java,
+                        "Readiness" to app.baseline.widget.ReadinessWidgetReceiver::class.java,
+                        "Sleep" to app.baseline.widget.SleepWidgetReceiver::class.java,
+                        "Move" to app.baseline.widget.MoveWidgetReceiver::class.java,
+                        "Body signals" to app.baseline.widget.SignalsWidgetReceiver::class.java,
+                    )
+                    val mgr = android.appwidget.AppWidgetManager.getInstance(ctx)
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        widgets.forEach { (label, cls) ->
+                            androidx.compose.material3.AssistChip(
+                                onClick = { mgr.requestPinAppWidget(android.content.ComponentName(ctx, cls), null, null) },
+                                label = { Text("Add $label") },
+                                leadingIcon = { Icon(androidx.compose.material.icons.Icons.Rounded.Add, null) },
+                                enabled = mgr.isRequestPinAppWidgetSupported,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text("Lock screen: on Android 16+ phones and tablets that support it, long-press the lock screen (or open the hub) and add a Baseline widget.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        "updates" -> SettingsPage("Updates", onBack = { page = null }) {
             item { SectionCard { app.baseline.update.UpdateSettings() } }
-            item { GroupLabel("About") }
+        }
+        "about" -> SettingsPage("About", onBack = { page = null }) {
             item {
                 SectionCard {
                     Link("How the numbers are calculated", { open(METRICS_URL) })
@@ -255,7 +253,43 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                 }
             }
         }
-        StatusBarScrim()
+        else -> SettingsPage("Settings", onBack = onBack) {
+            item {
+                SettingsGroup {
+                    NavRow(Icons.Rounded.Dns, "Bridge", when {
+                        s.demo -> "Demo data"
+                        data.error != null -> "Can't reach it right now"
+                        else -> "Connected · bridge ${data.summary?.bridgeVersion ?: "?"}"
+                    }) { page = "bridge" }
+                    NavRow(Icons.Rounded.MonitorHeart, "Health Connect", if (s.healthConnect) "Copying Zepp's data" else "Off") { page = "hc" }
+                }
+            }
+            item { GroupLabel("Today") }
+            item {
+                SettingsGroup {
+                    NavRow(Icons.Rounded.Flag, "Goals", "${Fmt.duration(s.sleepNeedMin)} sleep · ${"%,d".format(s.stepGoal)} steps · ${s.weeklyActiveGoal} active min") { page = "goals" }
+                    ToggleRow(Icons.Rounded.SelfImprovement, "Calm mode", "Words instead of numbers on Today", s.calmMode) { c -> vm.update { it.copy(calmMode = c) } }
+                    ToggleRow(Icons.Rounded.Bedtime, "Hold sleep until noon", "Sleep details wait for the afternoon", s.holdSleepScoreUntilAfternoon) { c -> vm.update { it.copy(holdSleepScoreUntilAfternoon = c) } }
+                }
+            }
+            item { GroupLabel("Look") }
+            item {
+                SettingsGroup {
+                    ThemeRow(s.theme) { k -> vm.update { it.copy(theme = k) } }
+                    ToggleRow(Icons.Rounded.Wallpaper, "Wallpaper colours", "Match your phone's colours", s.dynamicColor) { c -> vm.update { it.copy(dynamicColor = c) } }
+                }
+            }
+            item { GroupLabel("More") }
+            item {
+                SettingsGroup {
+                    NavRow(Icons.Rounded.AutoAwesome, "AI", if (s.aiEnabled) "On · Google Gemini" else "Off") { page = "ai" }
+                    NavRow(Icons.Rounded.Person, "About you", listOfNotNull(s.birthYear?.let { "Born $it" }, s.sex.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() }).joinToString(" · ").ifBlank { "Optional" }) { page = "you" }
+                    NavRow(Icons.Rounded.Widgets, "Widgets", "Add Baseline to your home screen") { page = "widgets" }
+                    NavRow(Icons.Rounded.SystemUpdate, "Updates", "Version ${BuildConfig.VERSION_NAME}") { page = "updates" }
+                    NavRow(Icons.Rounded.Info, "About", "How it works and the source code") { page = "about" }
+                }
+            }
+        }
     }
 
     if (confirmSignOut) {
@@ -266,6 +300,73 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
             confirmButton = { TextButton(onClick = { confirmSignOut = false; vm.signOut(); onBack() }) { Text(if (s.demo) "Leave" else "Disconnect") } },
             dismissButton = { TextButton(onClick = { confirmSignOut = false }) { Text("Cancel") } },
         )
+    }
+}
+
+/** A settings screen: back arrow, title, then its content. */
+@Composable
+private fun SettingsPage(title: String, onBack: () -> Unit, content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
+    val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+        LazyColumn(
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top, bottom = bottom + 24.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
+                    Text(title, style = MaterialTheme.typography.headlineMedium)
+                }
+            }
+            content()
+        }
+        StatusBarScrim()
+    }
+}
+
+/** One card holding a group of rows, with hairlines between them. */
+@Composable
+private fun SettingsGroup(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Column(Modifier.padding(vertical = 6.dp), content = content)
+    }
+}
+
+@Composable
+private fun RowShell(icon: ImageVector, title: String, summary: String?, onClick: (() -> Unit)?, trailing: @Composable () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(18.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            summary?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }
+        Spacer(Modifier.width(12.dp))
+        trailing()
+    }
+}
+
+@Composable
+private fun NavRow(icon: ImageVector, title: String, summary: String?, onClick: () -> Unit) =
+    RowShell(icon, title, summary, onClick) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+
+@Composable
+private fun ToggleRow(icon: ImageVector, title: String, summary: String?, checked: Boolean, onChange: (Boolean) -> Unit) =
+    RowShell(icon, title, summary, { onChange(!checked) }) { Switch(checked = checked, onCheckedChange = onChange) }
+
+@Composable
+private fun ThemeRow(current: String, onPick: (String) -> Unit) {
+    val modes = listOf("system" to "Same as phone", "light" to "Light", "dark" to "Dark")
+    var open by remember { mutableStateOf(false) }
+    Box {
+        RowShell(Icons.Rounded.Palette, "Theme", modes.firstOrNull { it.first == current }?.second ?: "Same as phone", { open = true }) {}
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, offset = androidx.compose.ui.unit.DpOffset(60.dp, 0.dp)) {
+            modes.forEach { (k, l) -> DropdownMenuItem(text = { Text(l) }, onClick = { onPick(k); open = false }) }
+        }
     }
 }
 
