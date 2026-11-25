@@ -93,7 +93,8 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
         /** Daily totals written so far, by local date. */
         val days: Map<String, HcPlanner.DayProgress> = emptyMap(),
         /**
-         * 5 = breathing rate stamped past midnight UTC on the wake-up date. 4 = SpO₂ follows the Google Health option,
+         * 6 = nights re-sent once so Google Health works out their vitals again. 5 = breathing rate stamped past
+         * midnight UTC on the wake-up date. 4 = SpO₂ follows the Google Health option,
          * HRV and SpO₂ rewritten once. 3 = fresh ids per rewrite, and heart-rate holes refilled. 2 = add-only records.
          * 0/1 = v0.6.0–0.6.1, which rewrote today's totals and the current hour's heart rate.
          */
@@ -195,6 +196,16 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
             st = st.copy(gen = st.gen + 1, written = st.written.filterKeys { !it.startsWith("baseline-breathing-") }, scheme = 5)
             save(st)
         }
+        // 0e. Re-send every night once (v0.7.6). Google Health works out a night's HRV, SpO₂ and breathing rate when it
+        //     takes in the night and then keeps them; re-dated readings for a night it already has never change its
+        //     numbers (25 Nov 2026: HRV re-dated at 13:07, past days unchanged; last night's, sent with its night, right).
+        //     The nights go out again unchanged, under new ids, so it works them out again from what's there now.
+        if (st.scheme < 6) {
+            _status.update { it.copy(progress = "Re-sending nights…") }
+            client.deleteRecords(SleepSessionRecord::class, everything)
+            st = st.copy(gen = st.gen + 1, nights = emptyMap(), written = st.written.filterKeys { !it.startsWith("baseline-sleep-") }, scheme = 6)
+            save(st)
+        }
 
         // 1. Readings, in week-long windows from the oldest per-series watermark (minus 2 h for late uploads). Only
         //    readings newer than their series' watermark are written, so nothing is ever sent twice.
@@ -261,9 +272,9 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
 
         val nights = HcPlanner.settledNights(summary, historyStart, lastReading, now)
         val replaced = mutableListOf<String>()
-        val currentIds = nights.map { "baseline-sleep-${it.start}" }.toSet()
+        val currentIds = nights.map { HcPlanner.recordId("sleep", st.gen, it.start) }.toSet()
         for (n in nights) {
-            val id = "baseline-sleep-${n.start}"
+            val id = HcPlanner.recordId("sleep", st.gen, n.start)
             add(id, "${n.start}|${n.end}|${n.stages.hashCode()}", build {
                 SleepSessionRecord(at(n.start), off(n.start, zone), at(n.end), off(n.end, zone), Metadata.autoRecorded(dev, id, version),
                     null, n.score?.let { "Zepp sleep score $it" }, n.stages.map { SleepSessionRecord.Stage(at(it.start), at(it.end), stage(it.kind)) })
@@ -389,7 +400,7 @@ class HealthConnectSync(private val context: Context, private val repo: Reposito
                 val range = TimeRangeFilter.between(Instant.EPOCH, Instant.now().plusSeconds(86_400))
                 for (type in TYPES) client.deleteRecords(type, range)
                 // Start over, but never reuse an id: copies written later must look new to apps that sync.
-                save(State(scheme = 5, gen = load().gen + 1))
+                save(State(scheme = 6, gen = load().gen + 1))
             }
         }
         _status.value = Status()
