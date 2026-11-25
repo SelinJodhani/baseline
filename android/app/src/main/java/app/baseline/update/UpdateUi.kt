@@ -97,7 +97,6 @@ fun UpdateSettings() {
     val scope = rememberCoroutineScope()
     val store = (ctx.applicationContext as BaselineApp).store
     Column {
-        Text("Updates", style = MaterialTheme.typography.titleMedium)
         Text("Version ${Updater.currentVersion} · from GitHub Releases, checksum-verified", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(12.dp))
         when (val s = state) {
