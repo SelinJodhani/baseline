@@ -69,10 +69,6 @@ import app.baseline.ui.common.SectionCard
 import app.baseline.ui.common.StatusBarScrim
 import app.baseline.ui.theme.Numeric
 import app.baseline.ui.theme.Brand
-import app.baseline.ui.common.ConnectedButtonGroup
-import app.baseline.ui.common.FitText
-import app.baseline.ui.common.ProvideEntrance
-import app.baseline.ui.common.StaggeredListScope
 import kotlin.math.roundToInt
 
 @Composable
@@ -89,27 +85,25 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit, onOpenSettings: ()
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
       Box(Modifier.fillMaxSize()) { // Surface would stretch the status-bar scrim over the whole page
-      ProvideEntrance {
         LazyColumn(
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top + 4.dp, bottom = bottom + 32.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) { StaggeredListScope(this).run {
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top + 4.dp, bottom = bottom + 32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
             item {
-                Column(Modifier.padding(horizontal = 4.dp)) {
-                    FilledTonalIconButton(onClick = onBack, modifier = Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
-                    Spacer(Modifier.height(24.dp))
-                    Text(metric.label, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        FitText(n.value, MaterialTheme.typography.displayLarge, Modifier.weight(1f, fill = false), min = 44.sp)
-                        if (n.unit.isNotBlank()) {
-                            Spacer(Modifier.width(8.dp))
-                            Text(n.unit, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 14.dp))
-                        }
+                FilledTonalIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
+                Spacer(Modifier.height(20.dp))
+                Text(metric.label.uppercase(), style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 1.5.sp), color = sp.color)
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(n.value, style = MaterialTheme.typography.displayLarge.merge(Numeric), fontWeight = FontWeight.Bold)
+                    if (n.unit.isNotBlank()) {
+                        Spacer(Modifier.width(8.dp))
+                        Text(n.unit, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 10.dp))
                     }
-                    if (n.status.isNotBlank()) LevelPill(n.status, n.level, Modifier.padding(top = 4.dp))
-                    Spacer(Modifier.height(16.dp))
-                    Text(takeaway(m, metric, sp), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 20.sp, lineHeight = 29.sp))
                 }
+                if (n.status.isNotBlank()) LevelPill(n.status, n.level)
+                Spacer(Modifier.height(16.dp))
+                Text(takeaway(m, metric, sp), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal, lineHeight = 26.sp))
             }
             item {
                 val days = ranges[rangeIdx].first
@@ -119,8 +113,10 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit, onOpenSettings: ()
                 SectionCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            if (setup.trimmed) "Since ${Fmt.dayMonth(dates.first())}" else "Last ${periodName(days)}",
-                            style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f),
+                            if (setup.trimmed) "Since ${Fmt.dayMonth(dates.first())}  ·  all your data so far"
+                            else "Last ${periodName(days)}",
+                            style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
                         )
                         TextButton(onClick = { guide = true }, contentPadding = PaddingValues(horizontal = 8.dp)) {
                             Icon(Icons.AutoMirrored.Rounded.HelpOutline, null, modifier = Modifier.size(18.dp))
@@ -131,8 +127,8 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit, onOpenSettings: ()
                     val tColor = setup.trend?.let { t ->
                         when (t.good) {
                             true -> h.great
-                            false -> h.fair
-                            null -> MaterialTheme.colorScheme.onSurface
+                            false -> if (sp.color == h.fair || sp.color == h.steps) h.low else h.fair // stay distinct from amber bars
+                            null -> if (sp.bars) MaterialTheme.colorScheme.onSurface else sp.color
                         }
                     }
                     setup.trend?.let { t -> TrendHeadline(metric, t, sp, if (setup.trimmed) "since ${Fmt.dayMonth(dates.first())}" else "over the last ${periodName(days)}", tColor ?: sp.color) }
@@ -172,11 +168,12 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit, onOpenSettings: ()
                         Spacer(Modifier.height(10.dp))
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Spacer(Modifier.height(18.dp))
-                    ConnectedButtonGroup(
-                        options = ranges.indices.toList(), selected = rangeIdx, onSelect = { rangeIdx = it },
-                        label = { ranges[it].second }, height = 48.dp,
-                    )
+                    Spacer(Modifier.height(14.dp))
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        ranges.forEachIndexed { i, (_, l) ->
+                            SegmentedButton(selected = rangeIdx == i, onClick = { rangeIdx = i }, shape = SegmentedButtonDefaults.itemShape(i, ranges.size), icon = {}) { Text(l) }
+                        }
+                    }
                 }
                 if (guide) ChartGuideSheet(m, metric, sp, setup, currentValue(m, metric), onDismiss = { guide = false })
             }
@@ -185,7 +182,7 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit, onOpenSettings: ()
                 val from = m.insights.today.atStartOfDay(zone).toEpochSecond()
                 val rows = m.data.summary?.hourly?.heartRate.orEmpty()
                 if (rows.any { it[0] >= from }) SectionCard {
-                    Text("Heart rate today", style = MaterialTheme.typography.titleLarge)
+                    Text("Heart rate today", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(10.dp))
                     IntradayChart(rows, from, from + 86400, h.heart, { Fmt.hour(it, zone) })
                 }
@@ -195,17 +192,16 @@ fun StoryScreen(m: Model, metric: Metric, onBack: () -> Unit, onOpenSettings: ()
             item { Section(Icons.Rounded.Visibility, "What to look for", sp.color) { Bullets(story.lookFor, sp.color) } }
             item { Section(Icons.Rounded.AutoGraph, "How to improve", sp.color) { Bullets(story.improve, sp.color, numbered = true) } }
             item {
-                Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
-                    Icon(Icons.Rounded.Straighten, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(12.dp))
+                Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(horizontal = 4.dp)) {
+                    Icon(Icons.Rounded.Straighten, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(10.dp))
                     Column {
-                        Text(story.reliability.label, style = MaterialTheme.typography.titleSmall)
-                        Text(story.measured, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(story.reliability.label, style = MaterialTheme.typography.labelLarge)
+                        Text(story.measured, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
-        } }
-      }
+        }
         StatusBarScrim()
       }
     }
@@ -221,25 +217,25 @@ private fun TrendHeadline(metric: Metric, t: TrendInfo, sp: Spec, period: String
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 when { t.steady -> Icons.AutoMirrored.Rounded.TrendingFlat; t.delta > 0 -> Icons.AutoMirrored.Rounded.TrendingUp; else -> Icons.AutoMirrored.Rounded.TrendingDown },
-                null, tint = tint, modifier = Modifier.size(26.dp),
+                null, tint = tint, modifier = Modifier.size(22.dp),
             )
             Spacer(Modifier.width(8.dp))
             Text(
                 if (t.steady) "Steady $period" else "${trendPhrase(metric, t, sp)} $period",
-                style = MaterialTheme.typography.titleLarge, color = tint,
+                style = MaterialTheme.typography.titleMedium, color = tint, fontWeight = FontWeight.SemiBold,
             )
         }
         Text(
             (if (t.steady) "Trend around ${sp.format(t.to)}$unit" else "Trend ${sp.format(t.from)} → ${sp.format(t.to)}$unit") +
                 when (t.good) { true -> " · good for you"; false -> " · worth turning around"; null -> "" },
-            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 34.dp),
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 30.dp),
         )
     }
 }
 
 /** Dot colour for a point's place against your normal: green when that's good for you, orange when it isn't. */
 private fun positionColor(pos: Int, sp: Spec, h: app.baseline.ui.theme.HealthColors): Color = when {
-    pos == 0 || sp.higherIsBetter == null -> h.neutral
+    pos == 0 || sp.higherIsBetter == null -> sp.color
     (pos > 0) == sp.higherIsBetter -> h.great
     else -> h.fair
 }
@@ -251,15 +247,12 @@ private fun NormalHeader(metric: Metric, b: ClosedFloatingPointRange<Double>, sp
     val unit = if (sp.unit.isBlank() || sp.unit == "off" || fmt !== sp.format) "" else " ${sp.unit}"
     Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text("Your normal", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("${fmt(b.start)} – ${fmt(b.endInclusive)}$unit", style = MaterialTheme.typography.headlineSmall.merge(Numeric))
+            Text("Your normal", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("${fmt(b.start)} – ${fmt(b.endInclusive)}$unit", style = MaterialTheme.typography.titleMedium.merge(Numeric), fontWeight = FontWeight.SemiBold)
         }
         if (latest != null) {
             val c = positionColor(pos, sp, h)
-            LevelPill(
-                when (pos) { 1 -> "Above"; -1 -> "Below"; else -> "Inside" },
-                when { pos == 0 || sp.higherIsBetter == null -> Level.Good; (pos > 0) == sp.higherIsBetter -> Level.Great; else -> Level.Fair },
-            )
+            LevelPillLike(when (pos) { 1 -> "Above"; -1 -> "Below"; else -> "Inside" }, if (pos == 0) h.good else c)
         }
     }
 }
@@ -281,12 +274,12 @@ private fun TrendTable(metric: Metric, rows: List<TrendRow>, sp: Spec) {
     val h = Brand.health
     val df = displayFormat(metric, sp)
     val unit = if (sp.unit.isBlank() || sp.unit == "off" || metric == Metric.SleepTiming || df !== sp.format) "" else " ${sp.unit}"
-    Text("Trend analysis", style = MaterialTheme.typography.titleMedium)
+    Text("Trend analysis", style = MaterialTheme.typography.titleSmall)
     Spacer(Modifier.height(4.dp))
     rows.forEach { r ->
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("${r.days} days", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Text("${r.days} days", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
             val c = when (r.good) { true -> h.great; false -> h.fair; null -> MaterialTheme.colorScheme.onSurfaceVariant }
             Icon(
                 when { !r.significant -> Icons.AutoMirrored.Rounded.TrendingFlat; r.delta > 0 -> Icons.AutoMirrored.Rounded.TrendingUp; else -> Icons.AutoMirrored.Rounded.TrendingDown },
@@ -295,7 +288,7 @@ private fun TrendTable(metric: Metric, rows: List<TrendRow>, sp: Spec) {
             Spacer(Modifier.width(6.dp))
             val amount = if (metric == Metric.SleepTiming) "${(kotlin.math.abs(r.delta) * 60).roundToInt()} min ${if (r.delta > 0) "later" else "earlier"}"
                 else "${if (r.delta >= 0) "+" else "−"}${df(kotlin.math.abs(r.delta))}$unit"
-            Text(amount, style = MaterialTheme.typography.titleMedium.merge(Numeric), color = c)
+            Text(amount, style = MaterialTheme.typography.bodyMedium.merge(Numeric), color = c, fontWeight = FontWeight.SemiBold)
         }
     }
     Text(
@@ -321,8 +314,8 @@ private fun trendPhrase(metric: Metric, t: TrendInfo, sp: Spec): String {
 @Composable
 private fun PeriodStat(label: String, value: String?, modifier: Modifier = Modifier) {
     Column(modifier) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value ?: "—", style = MaterialTheme.typography.titleLarge.merge(Numeric))
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value ?: "—", style = MaterialTheme.typography.titleMedium.merge(Numeric), fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -330,30 +323,29 @@ private fun PeriodStat(label: String, value: String?, modifier: Modifier = Modif
 private fun Section(icon: ImageVector, title: String, tint: Color, content: @Composable () -> Unit) {
     SectionCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-            Spacer(Modifier.width(12.dp))
-            Text(title, style = MaterialTheme.typography.titleLarge)
+            Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+            Text(title, style = MaterialTheme.typography.titleMedium)
         }
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(12.dp))
         content()
     }
 }
 
 @Composable
-private fun Body(text: String) = Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+private fun Body(text: String) = Text(text, style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 24.sp), color = MaterialTheme.colorScheme.onSurface)
 
 @Composable
 private fun Bullets(items: List<String>, tint: Color, numbered: Boolean = false) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         items.forEachIndexed { i, t ->
             Row(verticalAlignment = Alignment.Top) {
-                val cs = MaterialTheme.colorScheme
-                Box(Modifier.padding(top = 2.dp).size(26.dp).clip(CircleShape).background(cs.primaryContainer), contentAlignment = Alignment.Center) {
-                    if (numbered) Text("${i + 1}", style = MaterialTheme.typography.labelLarge, color = cs.onPrimaryContainer)
-                    else Box(Modifier.size(7.dp).clip(CircleShape).background(cs.onPrimaryContainer))
+                Box(Modifier.padding(top = 2.dp).size(22.dp).clip(CircleShape).background(tint.copy(alpha = .16f)), contentAlignment = Alignment.Center) {
+                    if (numbered) Text("${i + 1}", style = MaterialTheme.typography.labelMedium, color = tint, fontWeight = FontWeight.Bold)
+                    else Box(Modifier.size(6.dp).clip(CircleShape).background(tint))
                 }
-                Spacer(Modifier.width(14.dp))
-                Text(t, style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.width(12.dp))
+                Text(t, style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 24.sp))
             }
         }
     }

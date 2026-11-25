@@ -26,7 +26,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -129,7 +128,7 @@ fun ConnectScreen(vm: AppViewModel, initialUrl: String, initialToken: String = "
                 enabled = !busy && url.isNotBlank() && token.isNotBlank(),
                 modifier = Modifier.fillMaxWidth().height(52.dp),
             ) {
-                if (busy) app.baseline.ui.common.ExpressiveLoading(size = 24.dp, color = LocalContentColor.current) else Text("Connect")
+                if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Connect")
             }
             Spacer(Modifier.height(10.dp))
             OutlinedButton(onClick = { vm.startDemo(); onDone() }, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text("Explore with demo data") }
@@ -139,7 +138,7 @@ fun ConnectScreen(vm: AppViewModel, initialUrl: String, initialToken: String = "
             }
             Spacer(Modifier.height(24.dp))
             Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-                Text("Not medical advice. Baseline is an open-source personal dashboard.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Not medical advice. Baseline is an open-source personal dashboard.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(16.dp))
         }

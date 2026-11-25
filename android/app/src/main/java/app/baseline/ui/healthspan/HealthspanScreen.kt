@@ -119,13 +119,25 @@ private fun leverValue(p: Cha.Part): String = when (p.lever) {
 
 /** The Healthspan row at the top of the Body tab. */
 @Composable
-fun HealthspanEntry(m: Model, onClick: () -> Unit, index: Int = 0, count: Int = 1) {
+fun HealthspanEntry(m: Model, onClick: () -> Unit) {
     val hs = remember(m) { Healthspan(m) }
     val cs = MaterialTheme.colorScheme
     val line = hs.cha?.let { r ->
         hs.age?.let { a -> "Health age ${"%.0f".format(r.healthAge(a))} · you're $a" } ?: "Habits: ${years(r.gapYears)} vs your age"
     } ?: "Needs about 5 weeks of sleep, steps and heart rate"
-    app.baseline.ui.common.EntryRow(Icons.Rounded.Spa, "Healthspan", line, index, count, onClick)
+    Surface(shape = RoundedCornerShape(28.dp), color = cs.surfaceContainerLow, modifier = Modifier.clip(RoundedCornerShape(28.dp)).clickable(onClick = onClick)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(32.dp).clip(CircleShape).background(Brand.health.great.copy(alpha = .16f)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.Spa, null, tint = Brand.health.great, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Healthspan", style = MaterialTheme.typography.titleMedium)
+                Text(line, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+            }
+            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = cs.onSurfaceVariant)
+        }
+    }
 }
 
 /**
@@ -156,17 +168,17 @@ fun HealthspanScreen(m: Model, onBack: () -> Unit, onOpenSettings: () -> Unit, o
                 val (words, level) = gapWords(r.gapYears)
                 Row(verticalAlignment = Alignment.Bottom) {
                     val big = hs.age?.let { "%.0f".format(r.healthAge(it)) } ?: years(r.gapYears).substringBefore(" ")
-                    Text(big, style = MaterialTheme.typography.displayLarge.merge(Numeric))
+                    Text(big, style = MaterialTheme.typography.displayMedium.merge(Numeric), fontWeight = FontWeight.Bold)
                     Spacer(Modifier.width(10.dp))
                     Text(
                         hs.age?.let { "health age · you're $it" } ?: "years vs your age",
-                        style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 14.dp),
+                        style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 10.dp),
                     )
                 }
                 LevelPill(words, level)
                 if (hs.age == null) TextButton(onClick = onOpenSettings, modifier = Modifier.padding(top = 4.dp)) { Text("Add your birth year to see your health age") }
                 Spacer(Modifier.height(18.dp))
-                Text("What each habit adds or takes off", style = MaterialTheme.typography.titleMedium)
+                Text("What each habit adds or takes off", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(10.dp))
                 val scale = max(1.0, r.parts.maxOf { abs(it.years) })
                 r.parts.sortedByDescending { abs(it.years) }.forEach { p -> LeverRow(p, scale) }
@@ -178,7 +190,7 @@ fun HealthspanScreen(m: Model, onBack: () -> Unit, onOpenSettings: () -> Unit, o
                 }
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "From ${r.days} days across ${r.validWeeks} weeks, ending ${Fmt.dayMonth(hs.end)}. Your accent colour takes years off, the second colour adds them; zero means you're already in the no-effect range.",
+                    "From ${r.days} days across ${r.validWeeks} weeks, ending ${Fmt.dayMonth(hs.end)}. Green takes years off, amber adds them; zero means you're already in the no-effect range.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -187,18 +199,19 @@ fun HealthspanScreen(m: Model, onBack: () -> Unit, onOpenSettings: () -> Unit, o
         if (hs.whatIfs.isNotEmpty()) item {
             SectionLabel("What would move it")
             Spacer(Modifier.height(8.dp))
-            val ws = hs.whatIfs.take(4)
-            app.baseline.ui.common.SegmentedColumn(ws.size) { i ->
-                val w = ws[i]
-                app.baseline.ui.common.SegmentRow(i, ws.size, padding = 18.dp) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(w.text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                        Spacer(Modifier.width(12.dp))
-                        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
-                            Text(
-                                "−${"%.1f".format(w.yearsGained)} y", style = MaterialTheme.typography.titleMedium.merge(Numeric),
-                                color = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                            )
+            Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                Column {
+                    hs.whatIfs.take(4).forEachIndexed { i, w ->
+                        if (i > 0) HorizontalDivider(Modifier.padding(start = 20.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .4f))
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(w.text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                            Spacer(Modifier.width(12.dp))
+                            Surface(shape = CircleShape, color = h.great.copy(alpha = .16f)) {
+                                Text(
+                                    "−${"%.1f".format(w.yearsGained)} y", style = MaterialTheme.typography.labelLarge.merge(Numeric),
+                                    color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                )
+                            }
                         }
                     }
                 }
@@ -273,7 +286,7 @@ fun HealthspanScreen(m: Model, onBack: () -> Unit, onOpenSettings: () -> Unit, o
                         "Blood uses Phenotypic Age (Levine, 2018): nine routine markers trained to predict ten-year mortality in tens of thousands of people in the US national health survey.\n\n" +
                         "Neither is a diagnosis. The habit score was validated on Fitbit users; Baseline computes active zone minutes from your watch's minute heart rate the same way. " +
                         "Read both as trends over months, not a verdict on any one week.",
-                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp), color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -283,14 +296,19 @@ fun HealthspanScreen(m: Model, onBack: () -> Unit, onOpenSettings: () -> Unit, o
 
 @Composable
 private fun CardTitle(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, tint: Color, subtitle: String) {
-    // Type-led: the title carries the card; the icon is kept in the signature for callers.
-    Column {
-        Text(title, style = MaterialTheme.typography.titleLarge)
-        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(32.dp).clip(CircleShape).background(tint.copy(alpha = .16f)), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = tint, modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
-/** One habit: name and value on the left, a bar growing from the centre (accent = years off, second colour = years on). */
+/** One habit: name and value on the left, a bar growing from the centre (green = years off, amber = years on). */
 @Composable
 private fun LeverRow(p: Cha.Part, scale: Double) {
     val h = Brand.health

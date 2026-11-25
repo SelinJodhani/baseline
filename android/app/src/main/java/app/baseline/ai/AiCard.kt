@@ -75,11 +75,10 @@ fun AiCard(
     // Closing a card is remembered (in settings), so it doesn't pop back the next time the page opens.
     val hidden = LocalAiHidden.current
     val collapsed = title in hidden.titles
-    fun setCollapsed(c: Boolean) = hidden.set(title, c)
     val clickable = ready && state is AiState.Idle
     Surface(
         shape = MaterialTheme.shapes.large,
-        color = cs.surfaceContainer,
+        color = cs.surfaceContainerLow,
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(
@@ -92,11 +91,11 @@ fun AiCard(
                 Spacer(Modifier.width(10.dp))
                 Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 when {
-                    collapsed -> TextButton(onClick = { setCollapsed(false) }) { Text("Show") }
-                    state is AiState.Loading -> app.baseline.ui.common.ExpressiveLoading(size = 24.dp)
+                    collapsed -> TextButton(onClick = { hidden.set(title, false) }) { Text("Show") }
+                    state is AiState.Loading -> CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                     clickable -> Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = cs.onSurfaceVariant)
                     state is AiState.Done || state is AiState.Error ->
-                        IconButton(onClick = { setCollapsed(true) }, modifier = Modifier.size(32.dp)) { Icon(Icons.Rounded.Close, "Hide", tint = cs.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
+                        IconButton(onClick = { hidden.set(title, true) }, modifier = Modifier.size(32.dp)) { Icon(Icons.Rounded.Close, "Hide", tint = cs.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
                 }
             }
             if (collapsed) return@Column
@@ -127,10 +126,10 @@ fun AiCard(
                 }
                 is AiState.Done -> {
                     Spacer(Modifier.height(10.dp))
-                    Text(state.text, style = MaterialTheme.typography.bodyLarge)
+                    Text(state.text, style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 24.sp))
                     state.note?.let {
                         Spacer(Modifier.height(6.dp))
-                        Text(it, style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
+                        Text(it, style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant)
                     }
                 }
             }

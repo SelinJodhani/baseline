@@ -256,7 +256,7 @@ fun TrendChart(
     val tipBg = cs.inverseSurface
     val tipFg = cs.inverseOnSurface
     val pillBg = cs.surfaceContainerLow
-    val labelStyle = TextStyle(fontFamily = app.baseline.ui.theme.FlexText, fontSize = 12.sp, color = onSurface)
+    val labelStyle = TextStyle(fontSize = 12.sp, color = onSurface)
     val n = values.size
     val pos = positions?.takeIf { it.size == n }
     val dens = androidx.compose.ui.platform.LocalDensity.current.density
@@ -463,7 +463,7 @@ fun TrendChart(
                 drawCircle(tc, 4.dp.toPx() * p, c)
                 if (avgLine != null && sel == null && p > .99f) {
                     // Where the trend is now, labelled at the end of the line.
-                    val tm = measurer.measure(labels.format(line[i]!!), TextStyle(fontFamily = app.baseline.ui.theme.FlexText, fontSize = 12.sp, color = cs.surface, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold))
+                    val tm = measurer.measure(labels.format(line[i]!!), TextStyle(fontSize = 12.sp, color = cs.surface, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold))
                     val padX = 6.dp.toPx(); val padY = 2.dp.toPx()
                     val bw = tm.size.width + padX * 2; val bh = tm.size.height + padY * 2
                     val bx = (c.x - bw - 8.dp.toPx()).coerceAtLeast(left)
@@ -501,7 +501,7 @@ fun TrendChart(
                 drawCircle(color, 4.dp.toPx(), Offset(xx, y(v)))
             }
             val text = tooltip?.invoke(i) ?: listOfNotNull(labels.x.getOrNull(i)?.replace('\n', ' '), v?.let(labels.format) ?: "no data").joinToString("  ·  ")
-            val tm = measurer.measure(text, TextStyle(fontFamily = app.baseline.ui.theme.FlexText, fontSize = 13.sp, color = tipFg, lineHeight = 18.sp))
+            val tm = measurer.measure(text, TextStyle(fontSize = 13.sp, color = tipFg, lineHeight = 18.sp))
             val padX = 10.dp.toPx(); val padY = 6.dp.toPx()
             val bw = tm.size.width + padX * 2; val bh = tm.size.height + padY * 2
             val bx = (xx - bw / 2).coerceIn(0f, size.width - bw)
@@ -607,7 +607,7 @@ fun Hypnogram(
                 drawRoundRect(c, Offset(xa, yTop), Size(xb - xa, barH), CornerRadius(minOf(barH / 2.5f, (xb - xa) / 2)))
             }
         }
-        val style = TextStyle(fontFamily = app.baseline.ui.theme.FlexText, fontSize = 12.sp, color = labelColor)
+        val style = TextStyle(fontSize = 12.sp, color = labelColor)
         // Labels on round hours (every 1–2 h) rather than at the odd start/end minute.
         val hours = ((t1 - t0) / 3600).coerceAtLeast(1)
         val stepH = if (hours > 6) 2 else 1
@@ -681,7 +681,7 @@ fun SleepWindows(
         val hi = (vals.maxOf { it.second } + 30).let { ((it / 60).toInt() + 1) * 60f }
         val h = size.height - bottom - top
         fun y(m: Float) = top + (m - lo) / (hi - lo) * h
-        val style = TextStyle(fontFamily = app.baseline.ui.theme.FlexText, fontSize = 12.sp, color = labelColor)
+        val style = TextStyle(fontSize = 12.sp, color = labelColor)
         val step = if (hi - lo > 720) 180f else 120f
         var m = (kotlin.math.ceil(lo / step) * step)
         while (m <= hi) {
@@ -725,7 +725,7 @@ fun SleepWindows(
         sel?.let { i ->
             val w = windows.getOrNull(i) ?: return@let
             val text = tooltip?.invoke(i) ?: return@let
-            val tm = measurer.measure(text, TextStyle(fontFamily = app.baseline.ui.theme.FlexText, fontSize = 13.sp, color = tipFg, lineHeight = 18.sp))
+            val tm = measurer.measure(text, TextStyle(fontSize = 13.sp, color = tipFg, lineHeight = 18.sp))
             val padX = 10.dp.toPx(); val padY = 6.dp.toPx()
             val bw2 = tm.size.width + padX * 2; val bh = tm.size.height + padY * 2
             val cx = left + slot * i + slot / 2
@@ -758,7 +758,7 @@ fun IntradayChart(
         val lo = data.minOf { it[1] } - 5; val hi = data.maxOf { it[3] } + 5
         fun x(t: Double) = left + ((t + 1800 - from) / (to - from) * w).toFloat()
         fun y(v: Double) = (h - (v - lo) / (hi - lo) * h).toFloat()
-        val style = TextStyle(fontFamily = app.baseline.ui.theme.FlexText, fontSize = 12.sp, color = labelColor)
+        val style = TextStyle(fontSize = 12.sp, color = labelColor)
         drawText(measurer, "%.0f".format(hi - 5), topLeft = Offset(0f, 0f), style = style)
         drawText(measurer, "%.0f".format(lo + 5), topLeft = Offset(0f, h - 14.sp.toPx()), style = style)
         clipRevealRect(left, p) {

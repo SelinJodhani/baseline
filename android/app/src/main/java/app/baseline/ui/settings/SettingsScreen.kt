@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -79,15 +81,19 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-      app.baseline.ui.common.ProvideEntrance {
         LazyColumn(
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top + 4.dp, bottom = bottom + 32.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) { app.baseline.ui.common.StaggeredListScope(this).run {
-            item { app.baseline.ui.common.PageHeader("Settings", onBack) }
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top, bottom = bottom + 24.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
+                    Text("Settings", style = MaterialTheme.typography.headlineMedium)
+                }
+            }
+            item { GroupLabel("Data source") }
             item {
                 SectionCard {
-                    Text("Data source", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(8.dp))
                     if (s.demo) {
                         Text("Demo mode — a fictional person's data.", style = MaterialTheme.typography.bodyMedium)
@@ -105,10 +111,11 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                     }
                 }
             }
+            item { GroupLabel("Health Connect") }
             item { HealthConnectCard(vm, s, bridgeHasSamples = data.summary?.capabilities?.samples == true, onCheck = { showHcCheck = true }) }
+            item { GroupLabel("Your targets") }
             item {
                 SectionCard {
-                    Text("Your targets", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(4.dp))
                     Text("Used for sleep debt, bedtime suggestions and progress rings.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))
@@ -117,17 +124,17 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                     SliderSetting("Weekly active minutes", "${s.weeklyActiveGoal} min", s.weeklyActiveGoal.toFloat(), 75f..450f, 15) { v -> vm.update { it.copy(weeklyActiveGoal = v) } }
                 }
             }
+            item { GroupLabel("Today") }
             item {
                 SectionCard {
-                    Text("Comfort", style = MaterialTheme.typography.titleLarge)
                     Text("For days when numbers feel like too much.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    app.baseline.ui.common.SwitchRow("Calm mode", "Today shows words instead of numbers. Detail pages keep their numbers.") { Switch(checked = s.calmMode, onCheckedChange = { c -> vm.update { it.copy(calmMode = c) } }) }
-                    app.baseline.ui.common.SwitchRow("Hold sleep until noon", "Keep last night's sleep details off Today until the afternoon, so the morning starts with how you feel.") { Switch(checked = s.holdSleepScoreUntilAfternoon, onCheckedChange = { c -> vm.update { it.copy(holdSleepScoreUntilAfternoon = c) } }) }
+                    SettingRow("Calm mode", "Today shows words instead of numbers. Detail pages keep their numbers.") { Switch(checked = s.calmMode, onCheckedChange = { c -> vm.update { it.copy(calmMode = c) } }) }
+                    SettingRow("Hold sleep until noon", "Keep last night's sleep details off Today until the afternoon, so the morning starts with how you feel.") { Switch(checked = s.holdSleepScoreUntilAfternoon, onCheckedChange = { c -> vm.update { it.copy(holdSleepScoreUntilAfternoon = c) } }) }
                 }
             }
+            item { GroupLabel("Widgets") }
             item {
                 SectionCard {
-                    Text("Widgets", style = MaterialTheme.typography.titleLarge)
                     Text("Glanceable health on your home screen — and on the lock screen where your phone supports it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))
                     val widgets = listOf(
@@ -153,37 +160,32 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                     Text("Lock screen: on Android 16+ phones and tablets that support it, long-press the lock screen (or open the hub) and add a Baseline widget.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            item { GroupLabel("Appearance") }
             item {
                 SectionCard {
-                    Text("Appearance", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(12.dp))
                     val modes = listOf("system" to "System", "light" to "Light", "dark" to "Dark")
-                    app.baseline.ui.common.ConnectedButtonGroup(
-                        options = modes, selected = modes.firstOrNull { it.first == s.theme }, onSelect = { (k, _) -> vm.update { it.copy(theme = k) } },
-                        label = { it.second }, height = 48.dp,
-                    )
-                    app.baseline.ui.common.SwitchRow("Wallpaper colours", "Material You on Android 12+") { Switch(checked = s.dynamicColor, onCheckedChange = { c -> vm.update { it.copy(dynamicColor = c) } }) }
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        modes.forEachIndexed { i, (k, l) ->
+                            SegmentedButton(selected = s.theme == k, onClick = { vm.update { it.copy(theme = k) } }, shape = SegmentedButtonDefaults.itemShape(i, modes.size)) { Text(l) }
+                        }
+                    }
+                    SettingRow("Wallpaper colours", "Material You on Android 12+") { Switch(checked = s.dynamicColor, onCheckedChange = { c -> vm.update { it.copy(dynamicColor = c) } }) }
                 }
             }
+            item { GroupLabel("AI") }
             item {
                 var key by remember(s.geminiKey) { mutableStateOf(s.geminiKey) }
                 var model by remember(s.geminiModel) { mutableStateOf(s.geminiModel) }
                 var docModel by remember(s.geminiDocModel) { mutableStateOf(s.geminiDocModel) }
+                var whatsSent by remember { mutableStateOf(false) }
                 SectionCard {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("AI", style = MaterialTheme.typography.titleLarge)
-                            Text("Optional · Google Gemini, your own key", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                    SettingRow("Use AI", "Optional · Google Gemini, with your own key") {
                         Switch(checked = s.aiEnabled, onCheckedChange = { c -> vm.update { it.copy(aiEnabled = c) } })
                     }
                     if (s.aiEnabled) {
                         Spacer(Modifier.height(8.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Daily brief on Today", style = MaterialTheme.typography.bodyLarge)
-                                Text("Written once a day. Close it on Today to hide it until tomorrow.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                        SettingRow("Daily brief on Today", "Written once a day. Close it on Today to hide it until tomorrow.") {
                             Switch(checked = s.briefOnToday, onCheckedChange = { c -> vm.update { it.copy(briefOnToday = c, briefHiddenOn = "") } })
                         }
                         Spacer(Modifier.height(12.dp))
@@ -205,19 +207,19 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                             ) { Text("Save") }
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
+                    TextButton(onClick = { whatsSent = !whatsSent }, contentPadding = PaddingValues(horizontal = 0.dp)) { Text(if (whatsSent) "Hide what's sent" else "What's sent to Gemini") }
+                    if (whatsSent) Text(
                         "When on, once a day Baseline sends Gemini a short text summary of the numbers you see on Today (scores, averages, targets) — never raw readings, times or anything that identifies you — and shows a three-sentence brief. Explanations on metric pages and lab results are sent only when you tap them. A lab report or InBody sheet you upload is sent once to read its values; only the values are kept, encrypted on this phone. Google's API terms apply to what is sent.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
+            item { GroupLabel("About you") }
             item {
                 // About you (optional): birth year + sex for age-based step goals and VO₂max percentiles. Stays on the device.
                 var year by remember(s.birthYear) { mutableStateOf(s.birthYear?.toString() ?: "") }
                 val parsed = year.trim().toIntOrNull()?.takeIf { it in 1900..java.time.LocalDate.now().year - 13 }
                 SectionCard {
-                    Text("About you (optional)", style = MaterialTheme.typography.titleLarge)
                     Text("Used only for age-based step goals and how your VO₂max compares with your age group. It stays on this phone and is never sent anywhere.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -231,16 +233,17 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                     }
                     Spacer(Modifier.height(12.dp))
                     val sexes = listOf("female" to "Female", "male" to "Male", "" to "Not set")
-                    app.baseline.ui.common.ConnectedButtonGroup(
-                        options = sexes, selected = sexes.firstOrNull { it.first == s.sex }, onSelect = { (k, _) -> vm.update { it.copy(sex = k) } },
-                        label = { it.second }, height = 48.dp,
-                    )
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        sexes.forEachIndexed { i, (k, l) ->
+                            SegmentedButton(selected = s.sex == k, onClick = { vm.update { it.copy(sex = k) } }, shape = SegmentedButtonDefaults.itemShape(i, sexes.size)) { Text(l) }
+                        }
+                    }
                 }
             }
             item { SectionCard { app.baseline.update.UpdateSettings() } }
+            item { GroupLabel("About") }
             item {
                 SectionCard {
-                    Text("About", style = MaterialTheme.typography.titleLarge)
                     Link("How the numbers are calculated", { open(METRICS_URL) })
                     Link("Set up ZeppBridge + Baseline Bridge", { open(SETUP_GUIDE_URL) })
                     Link("Source code on GitHub", { open(REPO_URL) })
@@ -251,8 +254,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onConnect: () -> Unit) 
                     )
                 }
             }
-        } }
-      }
+        }
         StatusBarScrim()
     }
 
@@ -289,10 +291,30 @@ private fun SliderSetting(label: String, value: String, current: Float, range: C
 
 @Composable
 private fun Link(text: String, onClick: () -> Unit) {
-    ListItem(
-        headlineContent = { Text(text) },
-        trailingContent = { Icon(Icons.AutoMirrored.Rounded.OpenInNew, null) },
-        modifier = Modifier.clickable(onClick = onClick),
-        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+    }
+}
+
+/** A small section label above a settings card. */
+@Composable
+internal fun GroupLabel(text: String) {
+    Text(
+        text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 8.dp, top = 12.dp),
     )
+}
+
+/** One setting: title and an optional line, full width, with a trailing control. No list-item inset. */
+@Composable
+internal fun SettingRow(title: String, body: String? = null, trailing: @Composable () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            body?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        Spacer(Modifier.width(16.dp))
+        trailing()
+    }
 }

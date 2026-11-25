@@ -80,18 +80,6 @@ import app.baseline.ui.story.Metric
 import app.baseline.ui.story.now
 import app.baseline.ui.story.spec
 import app.baseline.ui.theme.Numeric
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.IconButtonDefaults
-import app.baseline.ui.common.CountUp
-import app.baseline.ui.common.ExpressiveLoading
-import app.baseline.ui.common.FitText
-import app.baseline.ui.common.ThickProgress
-import app.baseline.ui.common.MorphBlob
-import app.baseline.ui.common.SegmentRow
-import app.baseline.ui.common.SegmentedColumn
-import app.baseline.ui.common.blobFor
-import app.baseline.ui.theme.Motion
 import app.baseline.ui.theme.Brand
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
@@ -121,7 +109,7 @@ fun TodayScreen(
         if (pm == null || pm.insights.today != m.insights.today.minusDays(back.toLong())) {
             RefreshablePage(false, onRefresh) {
                 item { Header(m, onSettings, onTakeItEasy = {}, back = back, oldest = oldest, onDay = { back = it }) }
-                item { Box(Modifier.fillMaxWidth().padding(top = 80.dp), contentAlignment = Alignment.Center) { ExpressiveLoading() } }
+                item { Box(Modifier.fillMaxWidth().padding(top = 80.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
             }
         } else PastDay(pm, back, oldest, onDay = { back = it }, onSettings, onMetric, onTab)
         return
@@ -134,19 +122,19 @@ fun TodayScreen(
     val mode = m.insights.mode
     RefreshablePage(m.data.refreshing || m.data.syncing, onRefresh) {
         item { Header(m, onSettings, onTakeItEasy = { showModes = true }, back = 0, oldest = oldest, onDay = { back = it }) }
-        item { app.baseline.update.UpdateBanner() }
-        if (mode != null) item { ModeBanner(mode, m, onOff = { vm.setMode(null) }) }
-        item { Hero(m, onWhy = { showWhy = true }, onFeel = { vm.setFeel(it) }, onTakeItEasy = { showModes = true }) }
         if (fresh.showCard) item {
             FreshnessCard(m, fresh, onSync, onOpenZepp, onDismiss = {
                 m.data.summary?.freshness?.lastReadingAt?.let { t -> vm.update { it.copy(syncCardDismissedFor = t) } }
             })
         }
+        item { app.baseline.update.UpdateBanner() }
+        if (mode != null) item { ModeBanner(mode, m, onOff = { vm.setMode(null) }) }
+        item { Hero(m, onWhy = { showWhy = true }, onFeel = { vm.setFeel(it) }, onTakeItEasy = { showModes = true }) }
         if (m.settings.aiEnabled && m.settings.geminiKey.isNotBlank() && m.settings.briefOnToday && m.settings.briefHiddenOn != m.insights.today.toString()) item {
             BriefCard(m, onHide = { vm.update { it.copy(briefHiddenOn = m.insights.today.toString()) } })
         }
         item {
-            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SleepTile(m, Modifier.weight(1f).fillMaxHeight()) { onTab(1) }
                 MoveTile(m, Modifier.weight(1f).fillMaxHeight()) { onTab(3) }
             }
@@ -166,7 +154,7 @@ private fun PastDay(m: Model, back: Int, oldest: Int, onDay: (Int) -> Unit, onSe
         item { Header(m, onSettings, onTakeItEasy = {}, back = back, oldest = oldest, onDay = onDay) }
         item { Hero(m, onWhy = { showWhy = true }, onFeel = {}, onTakeItEasy = {}, past = true) }
         item {
-            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SleepTile(m, Modifier.weight(1f).fillMaxHeight(), past = true) { onTab(1) }
                 MoveTile(m, Modifier.weight(1f).fillMaxHeight(), past = true) { onTab(3) }
             }
@@ -187,37 +175,29 @@ private fun Header(m: Model, onSettings: () -> Unit, onTakeItEasy: () -> Unit, b
         back > 1 -> m.insights.today.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault())
         hour in 5..11 -> "Good morning"; hour in 12..16 -> "Good afternoon"; hour in 17..21 -> "Good evening"; else -> "Rest well"
     }
-    val cs = MaterialTheme.colorScheme
-    Row(Modifier.fillMaxWidth().padding(start = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            // Step through earlier days; the arrows sit right by the date they change.
+            // Step through earlier days: the arrows sit right by the date they change.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { onDay(back + 1) }, enabled = back < oldest, modifier = Modifier.size(36.dp).padding(end = 2.dp)) {
-                    Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, "Previous day", tint = cs.onSurfaceVariant)
+                IconButton(onClick = { onDay(back + 1) }, enabled = back < oldest, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, "Previous day", tint = muted, modifier = Modifier.size(20.dp))
                 }
-                Text(Fmt.fullDate(m.insights.today), style = MaterialTheme.typography.titleSmall, color = cs.onSurfaceVariant)
-                if (back > 0) IconButton(onClick = { onDay(back - 1) }, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Next day", tint = cs.onSurfaceVariant)
+                Text(Fmt.fullDate(m.insights.today).uppercase(), style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.2.sp), color = muted)
+                if (back > 0) IconButton(onClick = { onDay(back - 1) }, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Next day", tint = muted, modifier = Modifier.size(20.dp))
                 }
             }
-            Text(greeting, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(start = 4.dp))
+            Text(greeting, style = MaterialTheme.typography.headlineLarge, modifier = Modifier.padding(start = 4.dp))
         }
         if (back > 0) {
             androidx.compose.material3.FilledTonalButton(onClick = { onDay(0) }) { Text("Today") }
             return@Row
         }
-        FilledTonalIconButton(
-            onClick = onTakeItEasy, modifier = Modifier.size(48.dp),
-            colors = IconButtonDefaults.filledTonalIconButtonColors(
-                containerColor = if (m.insights.mode != null) cs.primaryContainer else cs.surfaceContainerHigh,
-                contentColor = if (m.insights.mode != null) cs.onPrimaryContainer else cs.onSurfaceVariant,
-            ),
-        ) { Icon(m.insights.mode?.let { modeIcon(it.mode) } ?: Icons.Rounded.Spa, "Taking it easy?") }
-        Spacer(Modifier.width(8.dp))
-        FilledTonalIconButton(
-            onClick = onSettings, modifier = Modifier.size(48.dp),
-            colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = cs.surfaceContainerHigh, contentColor = cs.onSurfaceVariant),
-        ) { Icon(Icons.Rounded.Settings, "Settings") }
+        IconButton(onClick = onTakeItEasy) {
+            Icon(m.insights.mode?.let { modeIcon(it.mode) } ?: Icons.Rounded.Spa, "Taking it easy?", tint = if (m.insights.mode != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        IconButton(onClick = onSettings) { Icon(Icons.Rounded.Settings, "Settings", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 
@@ -231,58 +211,72 @@ private fun focusIcon(k: Focus.Kind) = when (k) {
     Focus.Kind.Sick -> Icons.Rounded.Sick
 }
 
-/**
- * The verdict: one huge word on the left, the score inside a Material shape on the right. The shape (cookie, petal,
- * soft square, pill) and its tone follow the verdict and morph when it changes. Tap either for "why".
- */
 @Composable
 private fun Hero(m: Model, onWhy: () -> Unit, onFeel: (Feel?) -> Unit, onTakeItEasy: () -> Unit, past: Boolean = false) {
     val r = m.insights.readiness
     val f = m.insights.focus
     val h = Brand.health
-    val cs = MaterialTheme.colorScheme
     val numbers = m.settings.showNumbers()
+    val holdSleep = m.settings.holdSleepDetail(localHour(m))
+    val tint = if (r.level == Level.Unknown) MaterialTheme.colorScheme.primary else h.of(r.level)
     val shown = r.score ?: r.zeppScore
+    val counted by animateIntAsState(shown ?: 0, tween(1100), label = "score")
     val chip = readinessChip(m)
-    Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
-        Row(
-            Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).clickable(onClick = onWhy).padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    if (r.verb == null) "Readiness" else if (past) "That day you were" else "Today you're",
-                    style = MaterialTheme.typography.titleMedium, color = if (r.level == Level.Unknown) cs.onSurfaceVariant else h.of(r.level),
-                )
-                if (r.verb != null) FitText(r.verb.label, MaterialTheme.typography.displayLarge, min = 40.sp)
-                else Text(r.headline, style = MaterialTheme.typography.headlineLarge, modifier = Modifier.padding(top = 4.dp))
-                chip?.let { QuietChip(it, Modifier.padding(top = 6.dp)) }
-                FeelAgreement(m)
-            }
-            Spacer(Modifier.width(12.dp))
-            MorphBlob(blobFor(r.verb), h.container(r.level), Modifier.size(136.dp)) {
-                if (numbers && shown != null) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CountUp(shown, MaterialTheme.typography.displaySmall.copy(fontSize = 46.sp), color = h.onContainer(r.level))
-                        if (r.score == null && r.zeppScore != null) Text("Zepp", style = MaterialTheme.typography.labelMedium, color = h.onContainer(r.level))
+    Surface(shape = RoundedCornerShape(32.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Box(Modifier.background(tint.copy(alpha = .10f))) {
+            Column(Modifier.padding(24.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable(onClick = onWhy)) {
+                    if (numbers) {
+                        Gauge(shown?.let { it / 100f }, listOf(tint), Modifier.size(132.dp), stroke = 12.dp) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(if (shown == null) "—" else "$counted", style = MaterialTheme.typography.displayMedium.merge(Numeric), fontWeight = FontWeight.Bold)
+                                Text(if (r.score == null && r.zeppScore != null) "ZEPP" else "READINESS", style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    } else {
+                        // Calm mode: the verb only, the arc a coarse picture of it.
+                        Gauge(verbFraction(r.verb), listOf(tint), Modifier.size(132.dp), stroke = 12.dp) {
+                            Text(
+                                r.verb?.label ?: "Learning", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold,
+                                color = if (r.verb == null) MaterialTheme.colorScheme.onSurface else tint, maxLines = 1,
+                            )
+                        }
                     }
-                } else {
-                    Icon(m.insights.mode?.let { modeIcon(it.mode) } ?: focusIcon(f.kind), null, tint = h.onContainer(r.level), modifier = Modifier.size(48.dp))
+                    Spacer(Modifier.width(20.dp))
+                    Column(Modifier.weight(1f)) {
+                        if (numbers) {
+                            Text(r.headline, style = MaterialTheme.typography.headlineMedium, color = if (r.level == Level.Unknown) MaterialTheme.colorScheme.onSurface else tint)
+                        }
+                        chip?.let { QuietChip(it, Modifier.padding(top = 4.dp)) }
+                        FeelAgreement(m)
+                        Spacer(Modifier.height(10.dp))
+                        r.contributors.forEach { c ->
+                            val held = holdSleep && c.name == "Sleep"
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
+                                Box(Modifier.size(8.dp).clip(CircleShape).background(if (held) MaterialTheme.colorScheme.outlineVariant else h.of(c.level)))
+                                Spacer(Modifier.width(8.dp))
+                                Text(c.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+                if (!past) {
+                    Spacer(Modifier.height(18.dp))
+                    CheckIn(m, onFeel, onTakeItEasy)
+                }
+                Spacer(Modifier.height(18.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
+                Spacer(Modifier.height(18.dp))
+                Row(verticalAlignment = Alignment.Top) {
+                    Icon(m.insights.mode?.let { modeIcon(it.mode) } ?: focusIcon(f.kind), null, tint = tint, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(14.dp))
+                    Column {
+                        Text(f.title, style = MaterialTheme.typography.titleLarge)
+                        Spacer(Modifier.height(4.dp))
+                        Text(f.body, style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 21.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
-        }
-        Spacer(Modifier.height(14.dp))
-        Text(f.title, style = MaterialTheme.typography.headlineSmall)
-        Spacer(Modifier.height(6.dp))
-        Text(f.body, style = MaterialTheme.typography.bodyLarge, color = cs.onSurfaceVariant)
-        Spacer(Modifier.height(4.dp))
-        TextButton(onClick = onWhy, contentPadding = PaddingValues(horizontal = 0.dp)) {
-            Text("Why this verdict", style = MaterialTheme.typography.labelLarge)
-            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, modifier = Modifier.size(18.dp))
-        }
-        if (!past) {
-            Spacer(Modifier.height(10.dp))
-            CheckIn(m, onFeel, onTakeItEasy)
         }
     }
 }
@@ -305,52 +299,45 @@ private fun BriefCard(m: Model, onHide: () -> Unit) {
     }
     LaunchedEffect(date) { if (brief == null) run() }
     val cs = MaterialTheme.colorScheme
-    Surface(shape = MaterialTheme.shapes.large, color = cs.secondaryContainer) {
-        Column(Modifier.padding(start = 22.dp, end = 10.dp, top = 14.dp, bottom = 20.dp)) {
+    Surface(shape = RoundedCornerShape(28.dp), color = cs.secondaryContainer) {
+        Column(Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.AutoAwesome, null, tint = cs.onSecondaryContainer, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(10.dp))
-                Text("Your brief", style = MaterialTheme.typography.titleMedium, color = cs.onSecondaryContainer, modifier = Modifier.weight(1f))
-                if (busy) ExpressiveLoading(Modifier.padding(12.dp), size = 24.dp, color = cs.onSecondaryContainer)
-                else IconButton(onClick = { run() }) { Icon(Icons.Rounded.Refresh, "Regenerate", tint = cs.onSecondaryContainer) }
-                IconButton(onClick = onHide) { Icon(Icons.Rounded.Close, "Hide for today", tint = cs.onSecondaryContainer) }
+                Icon(Icons.Rounded.AutoAwesome, null, tint = cs.onSecondaryContainer, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Your brief", style = MaterialTheme.typography.titleSmall, color = cs.onSecondaryContainer, modifier = Modifier.weight(1f))
+                if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = cs.onSecondaryContainer)
+                else IconButton(onClick = { run() }, modifier = Modifier.size(32.dp)) { Icon(Icons.Rounded.Refresh, "Regenerate", tint = cs.onSecondaryContainer, modifier = Modifier.size(18.dp)) }
+                IconButton(onClick = onHide, modifier = Modifier.size(32.dp)) { Icon(Icons.Rounded.Close, "Hide for today", tint = cs.onSecondaryContainer, modifier = Modifier.size(18.dp)) }
             }
-            Column(Modifier.padding(end = 12.dp)) {
-                AnimatedVisibility(brief != null || error != null) {
-                    Text(
-                        error ?: brief?.text.orEmpty(),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (error != null) cs.error else cs.onSecondaryContainer,
-                    )
-                }
-                if (brief == null && error == null && !busy) TextButton(onClick = { run() }) { Text("Write today's brief") }
-                if (brief != null) Text(
-                    "Hidden until tomorrow if you close it. Turn it off in Settings → AI.",
-                    style = MaterialTheme.typography.labelMedium, color = cs.onSecondaryContainer.copy(alpha = .75f), modifier = Modifier.padding(top = 10.dp),
+            Spacer(Modifier.height(8.dp))
+            AnimatedVisibility(brief != null || error != null) {
+                Text(
+                    error ?: brief?.text.orEmpty(),
+                    style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 24.sp),
+                    color = if (error != null) cs.error else cs.onSecondaryContainer,
                 )
             }
+            if (brief == null && error == null && !busy) TextButton(onClick = { run() }) { Text("Write today's brief") }
+            if (brief != null) Text(
+                "Hidden until tomorrow if you close it. Turn it off in Settings → AI.",
+                style = MaterialTheme.typography.labelSmall, color = cs.onSecondaryContainer.copy(alpha = .7f), modifier = Modifier.padding(top = 8.dp),
+            )
         }
     }
 }
 
-/** Paired tiles: mirrored corners (big outside, small where they meet). */
-private val LeftTile = RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp, topEnd = 8.dp, bottomEnd = 8.dp)
-private val RightTile = RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp, topEnd = 28.dp, bottomEnd = 28.dp)
-
 @Composable
-private fun Tile(modifier: Modifier, shape: androidx.compose.ui.graphics.Shape, onClick: () -> Unit, content: @Composable () -> Unit) {
-    Surface(shape = shape, color = MaterialTheme.colorScheme.surfaceContainer, modifier = modifier.clip(shape).clickable(onClick = onClick)) {
-        Column(Modifier.padding(20.dp)) { content() }
+private fun Tile(modifier: Modifier, onClick: () -> Unit, content: @Composable () -> Unit) {
+    Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = modifier.clip(RoundedCornerShape(28.dp)).clickable(onClick = onClick)) {
+        Column(Modifier.padding(18.dp)) { content() }
     }
 }
 
 @Composable
-private fun TileLabel(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+private fun TileLabel(text: String, color: Color) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(8.dp))
-        Text(text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        Text(text.uppercase(), style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.2.sp), color = color, modifier = Modifier.weight(1f))
+        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
     }
 }
 
@@ -358,57 +345,61 @@ private fun TileLabel(text: String, icon: androidx.compose.ui.graphics.vector.Im
 private fun SleepTile(m: Model, modifier: Modifier, past: Boolean = false, onClick: () -> Unit) {
     val s = m.insights.sleep
     val h = Brand.health
-    val cs = MaterialTheme.colorScheme
     val hold = !past && m.settings.holdSleepDetail(localHour(m))
-    Tile(modifier, LeftTile, onClick) {
-        TileLabel("Sleep", Icons.Rounded.Bedtime)
-        Spacer(Modifier.height(14.dp))
+    Tile(modifier, onClick) {
+        TileLabel("Sleep", h.sleep)
+        Spacer(Modifier.height(10.dp))
         when {
             hold -> {
-                Text("After noon", style = MaterialTheme.typography.headlineSmall)
-                Text("Last night's details wait until the afternoon", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                Text("After noon", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text("Last night's details wait until the afternoon", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             !m.settings.showNumbers() -> {
-                Text(sleepWord(s.level), style = MaterialTheme.typography.headlineSmall)
-                Text(if (s.level == Level.Unknown) "Nothing recorded yet" else "last night", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                Text(sleepWord(s.level), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text(if (s.level == Level.Unknown) "Nothing recorded yet" else "last night", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             else -> {
-                FitText(Fmt.duration(s.asleepMin), MaterialTheme.typography.headlineLarge, min = 22.sp)
-                Text("of ${Fmt.duration(s.needMin)} need", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                Text(Fmt.duration(s.asleepMin), style = MaterialTheme.typography.headlineMedium.merge(Numeric), fontWeight = FontWeight.Bold)
+                Text("of ${Fmt.duration(s.needMin)} need", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(12.dp))
         if (!hold) s.last?.let { l ->
-            StackBar(listOf((l.deepMin ?: 0).toFloat() to h.deep, (l.lightMin ?: 0).toFloat() to h.light, (l.remMin ?: 0).toFloat() to h.rem, (l.awakeMin ?: 0).toFloat() to h.awake), height = 10.dp)
-            Spacer(Modifier.height(12.dp))
+            StackBar(listOf((l.deepMin ?: 0).toFloat() to h.deep, (l.lightMin ?: 0).toFloat() to h.light, (l.remMin ?: 0).toFloat() to h.rem, (l.awakeMin ?: 0).toFloat() to h.awake), height = 8.dp)
         }
-        if (!past) Text(s.suggestedBedtime?.let { "Bed by ${InsightEngine.fmtTime(it)}" } ?: "—", style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant)
+        Spacer(Modifier.height(10.dp))
+        if (!past) Text(s.suggestedBedtime?.let { "Bed by ${InsightEngine.fmtTime(it)}" } ?: "—", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
 private fun MoveTile(m: Model, modifier: Modifier, past: Boolean = false, onClick: () -> Unit) {
     val a = m.insights.activity
-    val cs = MaterialTheme.colorScheme
+    val h = Brand.health
     val numbers = m.settings.showNumbers()
     val paused = m.insights.mode != null
-    Tile(modifier, RightTile, onClick) {
-        TileLabel("Move", Icons.Rounded.DirectionsWalk)
+    Tile(modifier, onClick) {
+        TileLabel("Move", h.steps)
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Ring((a.stepsToday ?: 0) / a.stepGoal.toFloat(), h.steps, Modifier.size(52.dp), stroke = 6.dp)
+            Spacer(Modifier.width(12.dp))
+            Column {
+                if (numbers) {
+                    Text(a.stepsToday?.let { "%,d".format(it) } ?: "—", style = MaterialTheme.typography.titleLarge.merge(Numeric), fontWeight = FontWeight.Bold)
+                } else {
+                    Text(if (paused) "Paused" else stepsWord(a.stepsToday, a.stepGoal, if (past) 23 else localHour(m)), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                }
+                Text("steps", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
         Spacer(Modifier.height(14.dp))
-        if (numbers) FitText(a.stepsToday?.let { "%,d".format(it) } ?: "—", MaterialTheme.typography.headlineLarge, min = 22.sp)
-        else Text(if (paused) "Paused" else stepsWord(a.stepsToday, a.stepGoal, if (past) 23 else localHour(m)), style = MaterialTheme.typography.headlineSmall)
-        Text("steps of ${"%,d".format(a.stepGoal)}", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-        Spacer(Modifier.height(14.dp))
-        ThickProgress((a.stepsToday ?: 0) / a.stepGoal.toFloat())
-        Spacer(Modifier.height(12.dp))
-        Text(
-            when {
-                paused -> "Targets paused"
-                numbers -> "${a.activeWeek} of ${a.activeGoal} active min"
-                else -> activeWord(a.activeWeek, a.activeGoal)
-            },
-            style = MaterialTheme.typography.labelLarge.merge(Numeric), color = cs.onSurfaceVariant,
-        )
+        when {
+            paused -> Text("Targets paused", style = MaterialTheme.typography.titleSmall)
+            numbers -> Text("${a.activeWeek} / ${a.activeGoal} min", style = MaterialTheme.typography.titleSmall.merge(Numeric))
+            else -> Text(activeWord(a.activeWeek, a.activeGoal), style = MaterialTheme.typography.titleSmall)
+        }
+        Text("active this week", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -434,40 +425,37 @@ private fun activeWord(week: Int, goal: Int) = when {
     else -> "Behind"
 }
 
-/** Overnight signals as a segmented list with big numbers. */
 @Composable
 private fun Signals(m: Model, onMetric: (Metric) -> Unit) {
     val h = Brand.health
-    val cs = MaterialTheme.colorScheme
     val metrics = listOf(Metric.Hrv, Metric.RestingHr, Metric.Breathing)
     val numbers = m.settings.showNumbers()
-    Column {
-        Text("Overnight", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 10.dp))
-        SegmentedColumn(metrics.size) { i ->
-            val metric = metrics[i]
-            val sp = spec(metric, h)
-            val n = now(m, metric, sp)
-            val signal = when (metric) { Metric.Hrv -> m.insights.hrv; Metric.RestingHr -> m.insights.rhr; else -> m.insights.resp }
-            val chip = signalChip(signal)
-            SegmentRow(i, metrics.size, onClick = { onMetric(metric) }) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(12.dp).clip(CircleShape).background(if (n.level == Level.Unknown) cs.outlineVariant else h.of(n.level)))
+    Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Column(Modifier.padding(vertical = 8.dp)) {
+            metrics.forEachIndexed { i, metric ->
+                if (i > 0) HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .4f))
+                val sp = spec(metric, h)
+                val n = now(m, metric, sp)
+                Row(Modifier.fillMaxWidth().clickable { onMetric(metric) }.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(if (n.level == Level.Unknown) MaterialTheme.colorScheme.outlineVariant else h.of(n.level)))
                     Spacer(Modifier.width(14.dp))
+                    val signal = when (metric) { Metric.Hrv -> m.insights.hrv; Metric.RestingHr -> m.insights.rhr; else -> m.insights.resp }
+                    val chip = signalChip(signal)
                     Column(Modifier.weight(1f)) {
-                        Text(metric.label, style = MaterialTheme.typography.titleMedium)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(metric.label, style = MaterialTheme.typography.titleSmall)
+                            chip?.let { Spacer(Modifier.width(8.dp)); QuietChip(it) }
+                        }
                         Text(
                             if (signal.today == null) "No reading last night" else n.status,
-                            style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
+                            style = if (numbers) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        chip?.let { QuietChip(it, Modifier.padding(top = 6.dp)) }
                     }
                     if (numbers) {
-                        Spacer(Modifier.width(12.dp))
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Text(n.value, style = MaterialTheme.typography.headlineLarge.merge(Numeric))
-                            Spacer(Modifier.width(4.dp))
-                            Text(n.unit, style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
-                        }
+                        Text(n.value, style = MaterialTheme.typography.titleLarge.merge(Numeric), fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(4.dp))
+                        Text(n.unit, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -497,7 +485,7 @@ private fun freshnessOf(m: Model): FreshnessInfo {
     val stale = live && (readingAge == null || readingAge > STALE_AFTER_MIN)
     val canSync = live && s?.capabilities?.sync == true && !m.data.syncing &&
         (checkAge == null || checkAge * 60 >= app.baseline.SYNC_AFTER_SEC)
-        // Closing the card keeps it away until a newer reading arrives.
+    // Closing the card keeps it away until a newer reading arrives.
     val dismissed = s?.freshness?.lastReadingAt != null && s.freshness.lastReadingAt == m.settings.syncCardDismissedFor
     return FreshnessInfo(readingAge, checkAge, stale, canSync, showCard = (stale && !dismissed) || m.data.syncing || m.data.syncNote != null)
 }
@@ -518,35 +506,38 @@ private fun FreshnessCard(m: Model, f: FreshnessInfo, onSync: () -> Unit, onOpen
     val ctx = LocalContext.current
     val cs = MaterialTheme.colorScheme
     val zeppIntent = remember { ZEPP_PACKAGES.firstNotNullOfOrNull { ctx.packageManager.getLaunchIntentForPackage(it) } }
-    Surface(shape = MaterialTheme.shapes.large, color = cs.surfaceContainerHigh) {
-        Column(Modifier.padding(22.dp)) {
+    Surface(shape = RoundedCornerShape(28.dp), color = cs.surfaceContainerHigh) {
+        Column(Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (m.data.syncing) ExpressiveLoading(size = 24.dp)
-                else Icon(Icons.Rounded.Sync, null, tint = cs.primary, modifier = Modifier.size(24.dp))
-                Spacer(Modifier.width(12.dp))
+                if (m.data.syncing) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                else Icon(Icons.Rounded.Sync, null, tint = cs.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
                 Text(
                     when {
                         m.data.syncing -> "Pulling from the Zepp cloud…"
                         f.stale -> "Last watch reading ${ageText(f.readingAgeMin)}"
                         else -> "Up to date"
                     },
-                    style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f),
                 )
-                if (!m.data.syncing) IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Hide until the next reading", tint = cs.onSurfaceVariant) }
+                if (!m.data.syncing) IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Rounded.Close, "Hide until the next reading", tint = cs.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                }
             }
             Spacer(Modifier.height(8.dp))
             Text(
                 m.data.syncNote ?: "Open the Zepp app so your watch syncs, then pull the latest here.",
-                style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant, modifier = Modifier.padding(start = 36.dp),
+                style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant,
             )
             if (!m.data.syncing) {
-                Spacer(Modifier.height(14.dp))
-                androidx.compose.foundation.layout.FlowRow(Modifier.padding(start = 36.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     if (zeppIntent != null) {
-                        OutlinedButton(onClick = { onOpenZepp(); ctx.startActivity(zeppIntent) }, modifier = Modifier.height(48.dp)) { Text("Open Zepp") }
+                        OutlinedButton(onClick = { onOpenZepp(); ctx.startActivity(zeppIntent) }) { Text("Open Zepp") }
+                        Spacer(Modifier.width(10.dp))
                     }
                     if (f.canSync) {
-                        Button(onClick = onSync, modifier = Modifier.height(48.dp)) { Text("Sync now") }
+                        Button(onClick = onSync) { Text("Sync now") }
                     } else if (m.data.summary?.capabilities?.sync == true) {
                         Text("Zepp cloud checked ${ageText(f.cloudCheckAgeMin)}", style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
                     }
@@ -564,5 +555,5 @@ private fun Freshness(m: Model) {
         m.data.error != null -> "Offline · showing your last copy · ${m.data.error}"
         else -> "Latest reading ${Fmt.ago(s.freshness.lastReadingAt)} · Zepp cloud checked ${Fmt.ago(listOfNotNull(s.freshness.libraryModifiedAt, m.data.syncedAt).maxOrNull())}"
     }
-    Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp))
+    Text(text, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp))
 }

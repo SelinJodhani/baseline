@@ -386,7 +386,7 @@ fun meaningOf(metric: Metric): String = when (metric) {
 
 private fun guideText(k: LegendKey): String = when (k.kind) {
     KeyKind.Dot -> "Each dot is one day's reading. Single days are noisy, so don't read much into one dot."
-    KeyKind.Line -> if (k.label.contains("average", true) || k.label == "Trend") "The trend line smooths out day-to-day noise so you can see where you're heading. It takes your accent colour when the change is good for you and the second colour when it isn't." else "The line joins each day's value. Gaps mean no reading that day."
+    KeyKind.Line -> if (k.label.contains("average", true) || k.label == "Trend") "The trend line smooths out day-to-day noise so you can see where you're heading. It turns green when the change is good for you and amber when it isn't." else "The line joins each day's value. Gaps mean no reading that day."
     KeyKind.Band -> "Shaded: your personal normal range, worked out from your own previous weeks. Inside it is a typical day for you."
     KeyKind.Dash -> "Dashed: a target (${k.label}). Bars that reach it are drawn solid."
     KeyKind.Bar -> "Each bar is one day."
@@ -403,7 +403,7 @@ fun ChartGuideSheet(m: Model, metric: Metric, sp: Spec, setup: ChartSetup, curre
             Text("How to read ${metric.label.lowercase().let { if (metric == Metric.Hrv || metric == Metric.HrvTrend || metric == Metric.Vo2) metric.label else it }}", style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(16.dp))
             GuideHeading("What the number means")
-            Text(meaningOf(metric), style = MaterialTheme.typography.bodyLarge)
+            Text(meaningOf(metric), style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 24.sp))
 
             val zones = zonesFor(metric, h)
             when {

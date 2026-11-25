@@ -170,9 +170,15 @@ class Palette(context: Context) {
     val alert = c(R.color.w_alert_container)
     val onAlert = c(R.color.w_on_alert_container)
 
+    /** Status colours, harmonised toward the wallpaper's primary (like the app), for day and night. */
+    private fun h(@ColorRes id: Int): ColorProvider = DayNightColor(
+        day = app.baseline.ui.theme.Harmonize.toward(Color(day.getColor(id)), Color(day.getColor(R.color.w_a1))),
+        night = app.baseline.ui.theme.Harmonize.toward(Color(night.getColor(id)), Color(night.getColor(R.color.w_a1))),
+    )
+
     private val levels = mapOf(
-        Level.Great to c(R.color.w_level_great), Level.Good to c(R.color.w_level_good), Level.Fair to c(R.color.w_level_fair),
-        Level.Low to c(R.color.w_level_low), Level.Unknown to c(R.color.w_level_unknown),
+        Level.Great to h(R.color.w_level_great), Level.Good to h(R.color.w_level_good), Level.Fair to h(R.color.w_level_fair),
+        Level.Low to h(R.color.w_level_low), Level.Unknown to c(R.color.w_level_unknown),
     )
 
     fun level(l: Level): ColorProvider = levels.getValue(l)

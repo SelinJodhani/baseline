@@ -43,22 +43,12 @@
     <color name="w_on_a3_container_var">@android:color/system_accent3_700</color>
     <!-- Track on tertiary container -->
     <color name="w_a3_track">@android:color/system_accent3_200</color>
-    <!-- Deep sleep: primary -->
-    <color name="w_stage_deep">@android:color/system_accent1_600</color>
-    <!-- Light sleep: a lighter primary -->
-    <color name="w_stage_light">@android:color/system_accent1_200</color>
-    <!-- REM sleep: tertiary -->
-    <color name="w_stage_rem">@android:color/system_accent3_500</color>
-    <!-- Awake: outline (neutral) -->
-    <color name="w_stage_awake">@android:color/system_neutral2_500</color>
-    <!-- Level: great = primary -->
-    <color name="w_level_great">@android:color/system_accent1_600</color>
-    <!-- Level: good = primary, a step softer -->
-    <color name="w_level_good">@android:color/system_accent1_500</color>
-    <!-- Level: caution = tertiary -->
-    <color name="w_level_fair">@android:color/system_accent3_600</color>
-    <!-- Level: needs rest = Material error -->
-    <color name="w_level_low">#FFBA1A1A</color>
-    <!-- Level: unknown = outline -->
-    <color name="w_level_unknown">@android:color/system_neutral2_500</color>
+    <!-- Deep sleep -->
+    <color name="w_stage_deep">@android:color/system_accent3_800</color>
+    <!-- REM sleep -->
+    <color name="w_stage_rem">@android:color/system_accent1_500</color>
+    <!-- Light sleep -->
+    <color name="w_stage_light">@android:color/system_accent3_400</color>
+    <!-- Awake -->
+    <color name="w_stage_awake">@android:color/system_accent3_200</color>
 </resources>

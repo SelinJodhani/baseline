@@ -79,4 +79,4 @@ Baseline is a personal dashboard, not a medical device. It doesn't diagnose anyt
 
 ## License
 
-[MIT](LICENSE). The bundled Roboto Flex font is under the [SIL Open Font License 1.1](android/third_party/roboto-flex/OFL.txt). ZeppBridge is a separate MIT-licensed project and isn't affiliated with Zepp Health. Amazfit and Zepp are trademarks of Zepp Health.
+[MIT](LICENSE). ZeppBridge is a separate MIT-licensed project and isn't affiliated with Zepp Health. Amazfit and Zepp are trademarks of Zepp Health.

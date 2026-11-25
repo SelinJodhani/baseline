@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
@@ -32,15 +33,12 @@ import app.baseline.ui.charts.Sparkline
 import app.baseline.ui.common.RefreshablePage
 import app.baseline.ui.common.ScreenTitle
 import app.baseline.ui.story.Metric
-import androidx.compose.foundation.layout.Arrangement
 import app.baseline.ui.story.hasData
 import app.baseline.ui.story.now
 import app.baseline.ui.story.spec
 import app.baseline.ui.story.values
 import app.baseline.ui.theme.Numeric
 import app.baseline.ui.theme.Brand
-import app.baseline.ui.common.SegmentRow
-import app.baseline.ui.common.SegmentedColumn
 
 private val groups = listOf(
     "Recovery" to listOf(Metric.Readiness, Metric.Signals, Metric.Hrv, Metric.HrvTrend, Metric.RestingHr, Metric.HrDip, Metric.Breathing),
@@ -54,21 +52,20 @@ fun BodyScreen(m: Model, onRefresh: () -> Unit, onMetric: (Metric) -> Unit, onLa
     val available = remember(m) { Metric.entries.filter { hasData(m, it) }.toSet() }
     RefreshablePage(m.data.refreshing || m.data.syncing, onRefresh) {
         item { ScreenTitle("Body", "Every signal, with the story behind it") }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                app.baseline.ui.healthspan.HealthspanEntry(m, onHealthspan, index = 0, count = 3)
-                app.baseline.labs.ui.LabsEntries(onLabs, onBodyComp, first = 1, count = 3)
-            }
-        }
+        item { app.baseline.ui.healthspan.HealthspanEntry(m, onHealthspan) }
+        item { app.baseline.labs.ui.LabsEntries(onLabs, onBodyComp) }
         groups.forEach { (title, metrics) ->
             val shown = metrics.filter { it in available }
             if (shown.isEmpty()) return@forEach
             item {
-                Column {
-                    Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 10.dp))
-                    SegmentedColumn(shown.size) { i ->
-                        val metric = shown[i]
-                        SegmentRow(i, shown.size, onClick = { onMetric(metric) }, padding = 0.dp) { MetricRow(m, metric) }
+                Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp, top = 6.dp))
+                Spacer(Modifier.height(8.dp))
+                Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    Column {
+                        shown.forEachIndexed { i, metric ->
+                            if (i > 0) HorizontalDivider(Modifier.padding(start = 20.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .4f))
+                            MetricRow(m, metric) { onMetric(metric) }
+                        }
                     }
                 }
             }
@@ -77,29 +74,34 @@ fun BodyScreen(m: Model, onRefresh: () -> Unit, onMetric: (Metric) -> Unit, onLa
 }
 
 @Composable
-private fun MetricRow(m: Model, metric: Metric) {
+private fun MetricRow(m: Model, metric: Metric, onClick: () -> Unit) {
     val h = Brand.health
     val sp = spec(metric, h)
     val n = now(m, metric, sp)
-    val cs = MaterialTheme.colorScheme
     // Start at the first reading so a short history fills the sparkline instead of hugging its right edge.
     val trend = remember(m, metric) { values(m, metric, 21).let { v -> v.drop(v.indexOfFirst { it != null }.coerceIn(0, maxOf(0, v.size - 7))) } }
-    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(12.dp).clip(CircleShape).background(if (n.level == Level.Unknown) cs.outlineVariant else h.of(n.level)))
-        Spacer(Modifier.width(14.dp))
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Column(Modifier.weight(1f)) {
             Text(metric.label, style = MaterialTheme.typography.titleMedium)
-            Text(n.status, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (n.level != Level.Unknown) {
+                    Box(Modifier.size(7.dp).clip(CircleShape).background(h.of(n.level)))
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text(n.status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+            }
         }
         if (metric != Metric.Signals && trend.count { it != null } >= 2) {
-            Spacer(Modifier.width(10.dp))
-            if (sp.bars) MiniBars(trend.takeLast(14), sp.color, Modifier.width(52.dp).height(30.dp))
-            else Sparkline(trend, sp.color, Modifier.width(52.dp).height(30.dp))
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(horizontalAlignment = Alignment.End) {
-            Text(n.value, style = MaterialTheme.typography.headlineSmall.merge(Numeric), maxLines = 1, softWrap = false)
-            if (n.unit.isNotBlank()) Text(n.unit, style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant, maxLines = 1)
+            if (sp.bars) MiniBars(trend.takeLast(14), sp.color, Modifier.width(64.dp).height(28.dp))
+            else Sparkline(trend, sp.color, Modifier.width(64.dp).height(28.dp))
+            Spacer(Modifier.width(14.dp))
+        } else Spacer(Modifier.width(78.dp))
+        Column(horizontalAlignment = Alignment.End, modifier = Modifier.widthIn(min = 56.dp)) {
+            Text(n.value, style = MaterialTheme.typography.titleLarge.merge(Numeric), fontWeight = FontWeight.Bold, maxLines = 1)
+            if (n.unit.isNotBlank()) Text(n.unit, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
     }
 }
